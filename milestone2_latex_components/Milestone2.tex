@@ -276,26 +276,34 @@ We will standardize identifiers, normalize schemas across sources, and deduplica
 \section{Web Application Tech Tools}
 %═══════════════════════════════════════════════════════════
 
-We will build a standard client--server web app: browser client, server, and database, following the course's web architecture framing.
+We will build a three-tier client--server web app following the course's web architecture framing: React in the browser, Node/Express on the server, and PostgreSQL as the database.
 
 \subsection{Database / Hosting}
 \begin{itemize}
-    \item \textbf{PostgreSQL} for development; hosted on \textbf{AWS RDS} for Milestone 3.
+    \item \textbf{PostgreSQL} hosted on \textbf{AWS RDS} (Milestone 3+). The server connects via the \texttt{pg} npm driver using the RDS endpoint on port 5432, with credentials stored in environment variables.
+    \item Following the course's \textbf{Embedded SQL} approach, we write parameterized SQL directly in application code (no ORM), giving full control over joins, window functions, and aggregations.
 \end{itemize}
 
 \subsection{Backend}
 \begin{itemize}
-    \item \textbf{Node.js + Express} for server-side API routes. Node/Express define routes as app.MET to handlers query the database
-    \item SQL written inside application code via a driver/library to connect, execute queries, and read results
-    \item \textbf{React} for client-side UI, using components and fetch calls to request data from the backend
+    \item \textbf{Node.js + Express} for the API layer. Routes follow the \texttt{app.METHOD(PATH, HANDLER)} pattern; each handler builds a parameterized SQL query, executes it via \texttt{pool.query()}, and returns results with \texttt{res.json()}.
+    \item Routes are organized into \texttt{express.Router()} modules: \texttt{/api/companies}, \texttt{/api/prices}, \texttt{/api/sectors}, \texttt{/api/compare}, and \texttt{/api/news}.
+    \item Core dependencies: \texttt{express}, \texttt{pg}, \texttt{dotenv} (env-var loading), \texttt{cors} (cross-origin requests between React dev server and Express).
+\end{itemize}
+
+\subsection{Frontend}
+\begin{itemize}
+    \item \textbf{React.js} scaffolded with \texttt{create-react-app}. All components are functional, using \texttt{useState} for local state and \texttt{useEffect} to trigger \texttt{fetch()} calls to the Express API on load or filter changes.
+    \item \textbf{React Router} provides client-side routing across the four main pages (Home, Sector/Industry, Compare, News Explorer) without full page reloads.
 \end{itemize}
 
 \subsection{Updates / Transactions}
 \begin{itemize}
-    \item Lists or other updates, we will bundle update sequences into transactions (BEGIN \ldots{} COMMIT/ROLLBACK) to preserve Postgres concurrency, we will start with default \textbf{READ COMMITTED} and only strengthen isolation if a feature requires it (performance-first rule of thumb).
+    \item For multi-step writes (e.g., watchlist updates), we wrap sequences in explicit transactions (\texttt{BEGIN \ldots{} COMMIT/ROLLBACK}). Default isolation is \textbf{READ COMMITTED}; we will only strengthen it if a specific feature requires it.
 \end{itemize}
 
 %═══════════════════════════════════════════════════════════
+\newpage
 \section{Team Responsibilities}
 %═══════════════════════════════════════════════════════════
 
@@ -309,7 +317,7 @@ Because we are currently a 3-person team, we will have to distribute more work p
     Finalize ERD + DDL; implement complex SQL queries (leaderboards, anomalies, correlation helpers); indexing strategy; performance testing plan.
 
     \item \textbf{Kartheek Gavini (Full-stack app lead):}\\
-    Node/Express API endpoints; React pages and client-side data fetching; integration testing; deployment wiring (local + AWS later).
+    Design and implement Express API endpoints (route structure, parameterization, error handling); build React page components and data-fetching logic; wire the end-to-end pipeline from browser to database; integration testing; deployment wiring (local + AWS later).
 \end{enumerate}
 
 \end{document}
