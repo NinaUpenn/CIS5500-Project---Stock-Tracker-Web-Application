@@ -168,9 +168,14 @@ CREATE TABLE industry (
 CREATE TABLE company (
     company_id    SERIAL PRIMARY KEY,
     ticker        TEXT NOT NULL UNIQUE,
-    company_name  TEXT,
-    exchange      TEXT,
-    cik           TEXT,
+    CompanyShortName  TEXT,
+    CompanyLongName TEXT,
+    sector TEXT,
+    Industry TEXT,
+    CuurentPrice DOUBLE PRECISION,
+    MarketCap DOUBLE PRECISION,
+    EBITBA TEXT,
+    RevenueGrowth DOUBLE PRECISION,
     industry_id   INT REFERENCES industry(industry_id)
 );
 \end{lstlisting}
@@ -212,14 +217,12 @@ CREATE TABLE news_article (
     published_at  TIMESTAMPTZ NOT NULL,
     title         TEXT NOT NULL,
     url           TEXT UNIQUE,
-    body          TEXT
+    Summary       TEXT
 );
 
 CREATE TABLE article_mention (
     article_id            BIGINT NOT NULL REFERENCES news_article(article_id)
-                          ON DELETE CASCADE,
     company_id            INT NOT NULL REFERENCES company(company_id)
-                          ON DELETE CASCADE,
     mention_confidence    DOUBLE PRECISION,
     PRIMARY KEY (article_id, company_id)
 );
