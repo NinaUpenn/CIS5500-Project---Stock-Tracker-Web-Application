@@ -3,6 +3,14 @@
 \usepackage{tikz}
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
+
+% Custom dashed underline (no ulem dependency)
+\newcommand{\dashuline}[1]{%
+  \tikz[baseline=(text.base)]{
+    \node[inner sep=0pt, outer sep=0pt] (text) {#1};
+    \draw[densely dashed, thin] (text.south west) -- (text.south east);
+  }%
+}
 \usetikzlibrary{shapes.geometric, positioning, calc, backgrounds}
 
 \begin{document}
@@ -13,9 +21,13 @@
 \begin{tikzpicture}[
   % --- Entity styles (from HW2) ---
   entity/.style={rectangle, draw, thick, minimum width=2cm, minimum height=0.7cm, fill=blue!5},
+  weak entity/.style={rectangle, draw, thick, double, double distance=2pt,
+                      minimum width=2cm, minimum height=0.7cm, fill=blue!5},
   % --- Relationship styles (from HW2) ---
   rel/.style={diamond, draw, thick, aspect=2.5, inner sep=1pt, fill=yellow!8,
               font=\footnotesize},
+  ident rel/.style={diamond, draw, thick, double, double distance=2pt, aspect=2.5,
+                    inner sep=1pt, fill=yellow!8, font=\footnotesize},
   % --- Attribute styles (from HW2) ---
   attr/.style={ellipse, draw, thin, inner sep=2pt, font=\scriptsize, fill=white},
   key attr/.style={attr, font=\scriptsize\bfseries},
@@ -64,10 +76,10 @@
 \node[attr] (na_bod) at (17.8, 3) {body};
 
 % --- PriceDaily (bottom left) ---
-\node[entity] (pricedaily) at (-2, -2) {PriceDaily};
-\node[key attr] (pd_cid) at (-5.2, -0.8) {\underline{company\_id}};
-\node[key attr] (pd_date) at (-5.2, -2) {\underline{trading\_date}};
-\node[key attr] (pd_sid) at (-5.2, -3.2) {\underline{source\_id}};
+\node[weak entity] (pricedaily) at (-2, -2) {PriceDaily};
+\node[attr] (pd_cid)        at (-5.2, -0.8) {company\_id (FK)};
+\node[key attr] (pd_date)  at (-5.2, -2) {\dashuline{trading\_date}};
+\node[attr] (pd_sid)        at (-5.2, -3.2) {source\_id (FK)};
 \node[attr] (pd_o) at (-0.2, -3.8) {open};
 \node[attr] (pd_h) at (1.2, -3) {high};
 \node[attr] (pd_l) at (-1.6, -3.8) {low};
@@ -77,15 +89,15 @@
 
 % --- TickerAlias (bottom center) ---
 \node[entity] (tickeralias) at (7, -2) {TickerAlias};
-\node[key attr] (ta_sid) at (4.5, -3.2) {\underline{source\_id}};
-\node[key attr] (ta_tis) at (7, -3.5) {\underline{ticker\_in\_source}};
-\node[attr] (ta_cid) at (9.5, -3.2) {company\_id (FK)};
+\node[key attr] (ta_sid)   at (4.5, -3.2) {\underline{source\_id}};
+\node[key attr] (ta_tis)  at (7, -3.5) {\underline{ticker\_in\_source}};
+\node[attr] (ta_cid)       at (9.5, -3.2) {company\_id (FK)};
 
 % --- ArticleMention (bottom right) ---
-\node[entity] (articlemention) at (16, -2) {ArticleMention};
-\node[key attr] (am_aid) at (13.5, -3.2) {\underline{article\_id}};
-\node[key attr] (am_cid) at (16, -3.5) {\underline{company\_id}};
-\node[attr] (am_mc) at (18.8, -3.2) {mention\_confidence};
+\node[weak entity] (articlemention) at (16, -2) {ArticleMention};
+\node[attr] (am_aid)  at (13.5, -3.2) {article\_id (FK)};
+\node[attr] (am_cid)  at (16, -3.5) {company\_id (FK)};
+\node[attr] (am_mc)   at (18.8, -3.2) {mention\_confidence};
 
 % =====================================================================
 % 2) RELATIONSHIP DIAMONDS
@@ -93,11 +105,11 @@
 
 \node[rel] (contains) at (7, 10.3) {\scriptsize contains};
 \node[rel] (classifies) at (7, 6.5) {\scriptsize classifies};
-\node[rel] (has_price) at (2.5, 1) {\scriptsize has};
-\node[rel] (provides) at (-2, 1) {\scriptsize provides};
+\node[ident rel] (has_price) at (2.5, 1) {\scriptsize has};
+\node[ident rel] (provides) at (-2, 1) {\scriptsize provides};
 \node[rel] (defines) at (7, 1) {\scriptsize defines};
-\node[rel] (mentioned) at (11.5, 1) {\scriptsize mentioned\_in};
-\node[rel] (mentions) at (16, 1) {\scriptsize mentions};
+\node[ident rel] (mentioned) at (11.5, 1) {\scriptsize mentioned\_in};
+\node[ident rel] (mentions) at (16, 1) {\scriptsize mentions};
 
 % =====================================================================
 % 3) DRAW ALL EDGES ON BACKGROUND (lines behind shapes)
@@ -179,6 +191,22 @@
 \node[lbl] at ($(newsarticle)!0.4!(mentions)$) [right] {1..1};
 \node[lbl] at ($(mentions)!0.4!(articlemention)$) [right] {0..*};
 
+
+% =====================================================================
+% 5) LEGEND
+% =====================================================================
+
+\node[anchor=north west, font=\small] at (-6, 13.5) {
+  \begin{tabular}{cl}
+  \tikz\node[rectangle, draw, thick, fill=blue!5, minimum width=0.7cm, minimum height=0.4cm, font=\tiny] {}; & Entity \\[3pt]
+  \tikz\node[rectangle, draw, thick, double, double distance=2pt, fill=blue!5, minimum width=0.7cm, minimum height=0.4cm, font=\tiny] {}; & Weak Entity \\[3pt]
+  \tikz\node[diamond, draw, thick, fill=yellow!8, aspect=2, inner sep=1pt, font=\tiny] {~~}; & Relationship \\[3pt]
+  \tikz\node[diamond, draw, thick, double, double distance=2pt, fill=yellow!8, aspect=2, inner sep=1pt, font=\tiny] {~~}; & Identifying Rel. \\[3pt]
+  \tikz\node[ellipse, draw, thin, fill=white, inner sep=2pt, font=\tiny] {~~}; & Attribute \\[3pt]
+  \tikz\node[ellipse, draw, thin, fill=white, inner sep=2pt, font=\tiny\bfseries] {\underline{PK}}; & Key Attribute \\[3pt]
+  \tikz\node[ellipse, draw, thin, fill=white, inner sep=2pt, font=\tiny] {\dashuline{pk}}; & Partial Key \\
+  \end{tabular}
+};
 
 \end{tikzpicture}%
 }% end resizebox

@@ -248,7 +248,7 @@ We will standardize identifiers, normalize schemas across sources, and deduplica
 \subsection{B) Multi-source price ingestion}
 
 \begin{itemize}
-    \item For each Kaggle price dataset (e.g., ``Stock Market Data'' and ``U.S.\ Stock Dataset''), load into staging, then normalize into price\_daily. (Your Milestone 1 links for these datasets are in your proposal.)
+    \item For each Kaggle price dataset (e.g., ``Stock Market Data'' and ``U.S.\ Stock Dataset''), load into staging, then normalize into price\_daily.
     \item Use price\_source.priority\_rank to define a ``preferred'' source when duplicates exist.
     \item De-dup logic: if multiple sources provide the same (ticker, date), keep all rows (for provenance).
 \end{itemize}
@@ -257,7 +257,7 @@ We will standardize identifiers, normalize schemas across sources, and deduplica
 
 \begin{itemize}
     \item Even if your price datasets include labels, we will still maintain explicit sector and industry dimension tables for cleanliness and join performance.
-    \item If classification differs across sources, choose a canonical mapping dataset (small) or define reconciliation rules (priority source, majority vote, etc.). (Including a separate mapping dataset is acceptable and often cleaner, \textit{we're thinking of having a separate mapping dataset of just news articles perhaps})
+    \item If classification differs across sources, choose a canonical mapping dataset (small) or define reconciliation rules (priority source, majority vote, etc.).
 \end{itemize}
 
 \subsection{D) News ingestion}
@@ -302,13 +302,13 @@ We will build a standard client--server web app: browser client, server, and dat
 Because we are currently a 3-person team, we will have to distribute more work per person and have each person take more responsibility for a subsection of the web application.
 
 \begin{enumerate}[label=\textbf{\arabic*.}]
-    \item \textbf{Member 1 (ETL, entity resolution and normalization):}\\
+    \item \textbf{Philip Lee (ETL, entity resolution and normalization):}\\
     Organize and normalize into price\_daily; create/maintain canonical company, industry, sector, and ticker\_alias; document cleaning rules.
 
-    \item \textbf{Member 2 (DB + SQL lead):}\\
+    \item \textbf{Na Ni (DB + SQL lead):}\\
     Finalize ERD + DDL; implement complex SQL queries (leaderboards, anomalies, correlation helpers); indexing strategy; performance testing plan.
 
-    \item \textbf{Member 3 (Full-stack app lead):}\\
+    \item \textbf{Kartheek Gavini (Full-stack app lead):}\\
     Node/Express API endpoints; React pages and client-side data fetching; integration testing; deployment wiring (local + AWS later).
 \end{enumerate}
 
