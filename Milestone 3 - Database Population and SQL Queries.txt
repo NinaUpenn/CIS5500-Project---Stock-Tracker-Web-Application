@@ -1,0 +1,147 @@
+
+
+1. In this query, it will list all S&P 500 companies with sector names and industry names
+
+SELECT
+    c.company_id,
+    c.ticker,
+    c.company_name,
+    i.industry_name,
+    s.sector_name
+FROM company c
+JOIN industry i ON c.industry_id = i.industry_id
+JOIN sector s ON i.sector_id = s.sector_id
+ORDER BY c.ticker
+
+2. In this query, user can search companies by ticker or company names. We can let user to type ticker in the text box. 
+SELECT
+    company_id,
+    ticker,
+    company_name
+FROM company
+WHERE ticker ILIKE '%AAPL%'
+   OR company_name ILIKE '%apple%'
+ORDER BY ticker
+
+
+3. This query can list out top 10 gainers on certain day user choose. 
+
+DECLARE @TradingDate date := '2025-12-31'
+
+WITH latest AS (
+    SELECT DISTINCT
+        company_id,
+        close,
+        trading_date
+    FROM price_daily
+    WHERE trading_date = @TradingDate
+),
+prev AS (
+    SELECT DISTINCT
+        company_id,
+        close AS prev_close
+    FROM price_daily
+    WHERE trading_date = @TradingDate - INTERVAL '1 day'
+)
+SELECT
+    c.ticker,
+    l.close,
+    p.prev_close,
+    ((l.close - p.prev_close) / p.prev_close) * 100 AS pct_change
+FROM latest l
+JOIN prev p ON l.company_id = p.company_id
+JOIN company c ON c.company_id = l.company_id
+ORDER BY pct_change DESC
+LIMIT 10
+
+4. This query can list all historical price for chart based on time series for the company user selects. 
+
+SELECT
+    c.company_name,
+    c.ticker
+    pd.trading_date,
+    pd.close
+FROM price_daily pd INNER JOIN company c on c.company_id = pd.company_id
+WHERE company_id = 1
+ORDER BY trading_date
+
+5.This query will show company names, tickers and company_id by industry that user select. 
+
+SELECT
+    c.company_id,
+    c.ticker,
+    c.company_name
+FROM company c
+JOIN industry i ON c.industry_id = i.industry_id
+JOIN sector s ON i.sector_id = s.sector_id
+WHERE s.sector_name = 'Technology'
+ORDER BY c.ticker
+
+6. This query will list top 10 latest news for a company. 
+
+SELECT
+    c.company_name,
+    c.ticker,
+    na.title,
+    na.source,
+    na.published_at,
+    na.url
+FROM news_article na
+JOIN article_mention am ON na.article_id = am.article_id
+JOIN company c on c.company_id = na.company_id
+WHERE am.company_id = 1
+ORDER BY na.published_at DESC
+LIMIT 10
+
+7. This query will show top 10 companies that most mentioned in the news. 
+
+SELECT
+    c.ticker,
+    COUNT(*) AS mention_count
+FROM article_mention am
+JOIN company c ON am.company_id = c.company_id
+JOIN news_article na ON na.article_id = am.article_id
+WHERE na.published_at >= CURRENT_DATE - INTERVAL '30 days'
+GROUP BY c.ticker
+ORDER BY mention_count DESC
+LIMIT 10
+
+8. This query will show rate of return for the day that users select and in what industry that user select. 
+
+DECLARE @TradingDate date = '2025-01-05'
+
+WITH latest AS (
+    SELECT DISTINCT
+        company_id,
+        close
+    FROM price_daily
+    WHERE Trading_Date := @TradingDate
+
+),
+prev AS (
+    SELECT DISTINCT
+        company_id,
+        close AS prev_close
+    FROM price_daily
+    WHERE Trading_date = @TradingDate - INTERVAL '1 day'
+)
+SELECT
+    s.sector_name,
+    AVG((l.close - p.prev_close) / p.prev_close * 100) AS avg_return_pct
+FROM latest l
+JOIN prev p ON l.company_id = p.company_id
+JOIN company c ON c.company_id = l.company_id
+JOIN industry i ON c.industry_id = i.industry_id
+JOIN sector s ON i.sector_id = s.sector_id
+WHERE sector_name = 'Technology'
+GROUP BY s.sector_name
+ORDER BY avg_return_pct DESC
+
+
+Credentials -- Instructions and guest credentials for accessing the database: 
+
+Host: project.ct8q4usyak98.us-east-1.rds.amazonaws.com
+Port: 5432
+UserName: student
+password: cis5500$
+Database: Project
