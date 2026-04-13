@@ -1,0 +1,26 @@
+{
+  "AAPL": [
+    { "ticker": "MSFT", "n_overlap": 250, "corr_ret": 0.782 },
+    { "ticker": "GOOGL", "n_overlap": 250, "corr_ret": 0.751 },
+    { "ticker": "AMZN", "n_overlap": 250, "corr_ret": 0.698 },
+    { "ticker": "META", "n_overlap": 250, "corr_ret": 0.654 },
+    { "ticker": "NVDA", "n_overlap": 250, "corr_ret": 0.612 }
+  ],
+  "MSFT": [
+    { "ticker": "AAPL", "n_overlap": 250, "corr_ret": 0.782 },
+    { "ticker": "GOOGL", "n_overlap": 250, "corr_ret": 0.766 },
+    { "ticker": "AMZN", "n_overlap": 250, "corr_ret": 0.721 },
+    { "ticker": "NVDA", "n_overlap": 250, "corr_ret": 0.678 }
+  ],
+  "NVDA": [
+    { "ticker": "AMD", "n_overlap": 250, "corr_ret": 0.811 },
+    { "ticker": "TSM", "n_overlap": 250, "corr_ret": 0.712 },
+    { "ticker": "MSFT", "n_overlap": 250, "corr_ret": 0.678 },
+    { "ticker": "AAPL", "n_overlap": 250, "corr_ret": 0.612 }
+  ],
+  "TSLA": [
+    { "ticker": "RIVN", "n_overlap": 250, "corr_ret": 0.704 },
+    { "ticker": "LCID", "n_overlap": 250, "corr_ret": 0.668 },
+    { "ticker": "F", "n_overlap": 250, "corr_ret": 0.513 }
+  ]
+}

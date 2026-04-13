@@ -1,0 +1,10 @@
+[
+  { "ticker": "AAPL" },
+  { "ticker": "AAL" },
+  { "ticker": "AMZN" },
+  { "ticker": "GOOGL" },
+  { "ticker": "MSFT" },
+  { "ticker": "META" },
+  { "ticker": "NVDA" },
+  { "ticker": "TSLA" }
+]

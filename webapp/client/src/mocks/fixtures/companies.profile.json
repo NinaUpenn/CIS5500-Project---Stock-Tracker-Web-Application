@@ -1,0 +1,30 @@
+{
+  "AAPL": {
+    "ticker": "AAPL",
+    "latest_date": "2022-12-12",
+    "latest_close": 144.49,
+    "latest_volume": 69246000,
+    "return_30_trading_days": -0.0425
+  },
+  "MSFT": {
+    "ticker": "MSFT",
+    "latest_date": "2022-12-12",
+    "latest_close": 252.51,
+    "latest_volume": 26392800,
+    "return_30_trading_days": 0.0118
+  },
+  "NVDA": {
+    "ticker": "NVDA",
+    "latest_date": "2022-12-12",
+    "latest_close": 169.65,
+    "latest_volume": 51235100,
+    "return_30_trading_days": 0.0732
+  },
+  "TSLA": {
+    "ticker": "TSLA",
+    "latest_date": "2022-12-12",
+    "latest_close": 167.82,
+    "latest_volume": 131458800,
+    "return_30_trading_days": -0.2113
+  }
+}
