@@ -1,0 +1,8 @@
+{
+  "rds_host": "localhost",
+  "rds_port": 5432,
+  "rds_db": "stock",
+  "rds_user": "stock",
+  "rds_password": "stock",
+  "server_port": 8080
+}

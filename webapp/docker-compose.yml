@@ -1,0 +1,31 @@
+# Local Postgres clone of the staging table, so the app runs entirely
+# offline after a one-time CSV load. See README §"Local DB (Docker)".
+#
+# Notes:
+#   * `db/init/` is auto-run by the Postgres image on FIRST start only.
+#     To re-run init, `docker compose down -v` (wipes the volume).
+#   * Data lives in the named volume `stock_pgdata` so restarts are cheap.
+#   * `pg_isready` healthcheck lets the load script wait deterministically.
+
+services:
+  db:
+    image: postgres:16
+    container_name: stock-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: stock
+      POSTGRES_PASSWORD: stock
+      POSTGRES_DB: stock
+    ports:
+      - "5432:5432"
+    volumes:
+      - stock_pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stock -d stock"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  stock_pgdata:
