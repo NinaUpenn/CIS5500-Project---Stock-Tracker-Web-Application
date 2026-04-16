@@ -1,10 +1,10 @@
 [
-  { "ticker": "AAPL" },
-  { "ticker": "AAL" },
-  { "ticker": "AMZN" },
-  { "ticker": "GOOGL" },
-  { "ticker": "MSFT" },
-  { "ticker": "META" },
-  { "ticker": "NVDA" },
-  { "ticker": "TSLA" }
+  { "company_id": 1, "ticker": "AAPL", "company_name": "Apple Inc.", "industry_name": "Consumer Electronics", "sector_name": "Technology" },
+  { "company_id": 2, "ticker": "AAL", "company_name": "American Airlines Group Inc", "industry_name": "Airlines", "sector_name": "Industrials" },
+  { "company_id": 3, "ticker": "AMZN", "company_name": "Amazon.com, Inc.", "industry_name": "Internet Retail", "sector_name": "Consumer Discretionary" },
+  { "company_id": 4, "ticker": "GOOGL", "company_name": "Alphabet Inc.", "industry_name": "Interactive Media & Services", "sector_name": "Communication Services" },
+  { "company_id": 5, "ticker": "MSFT", "company_name": "Microsoft Corporation", "industry_name": "Software Infrastructure", "sector_name": "Technology" },
+  { "company_id": 6, "ticker": "META", "company_name": "Meta Platforms, Inc.", "industry_name": "Interactive Media & Services", "sector_name": "Communication Services" },
+  { "company_id": 7, "ticker": "NVDA", "company_name": "NVIDIA Corporation", "industry_name": "Semiconductors", "sector_name": "Technology" },
+  { "company_id": 8, "ticker": "TSLA", "company_name": "Tesla, Inc.", "industry_name": "Auto Manufacturers", "sector_name": "Consumer Discretionary" }
 ]

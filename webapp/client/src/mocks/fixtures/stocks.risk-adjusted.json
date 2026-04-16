@@ -1,7 +1,0 @@
-[
-  { "ticker": "NVDA", "avg_daily_ret": 0.00284, "vol_daily_ret": 0.02891, "n_days": 250, "risk_adj_score": 0.0982, "rn": 1 },
-  { "ticker": "MSFT", "avg_daily_ret": 0.00112, "vol_daily_ret": 0.01654, "n_days": 250, "risk_adj_score": 0.0677, "rn": 2 },
-  { "ticker": "AAPL", "avg_daily_ret": 0.00098, "vol_daily_ret": 0.01703, "n_days": 250, "risk_adj_score": 0.0575, "rn": 3 },
-  { "ticker": "GOOGL", "avg_daily_ret": 0.00087, "vol_daily_ret": 0.01821, "n_days": 250, "risk_adj_score": 0.0478, "rn": 4 },
-  { "ticker": "AMZN", "avg_daily_ret": 0.00065, "vol_daily_ret": 0.02112, "n_days": 250, "risk_adj_score": 0.0308, "rn": 5 }
-]

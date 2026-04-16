@@ -31,9 +31,12 @@ test('idle message shows before typing', () => {
   expect(screen.getByText(/start typing/i)).toBeInTheDocument();
 });
 
-test('typing a prefix renders matching tickers', async () => {
+test('typing a prefix renders matching tickers + company names', async () => {
   api.searchCompanies.mockResolvedValueOnce({
-    data: [{ ticker: 'AAPL' }, { ticker: 'AAL' }],
+    data: [
+      { ticker: 'AAPL', company_name: 'Apple Inc.', industry_name: 'Consumer Electronics', sector_name: 'Technology' },
+      { ticker: 'AAL', company_name: 'American Airlines Group Inc', industry_name: 'Airlines', sector_name: 'Industrials' },
+    ],
     status: 200,
   });
 
@@ -41,8 +44,10 @@ test('typing a prefix renders matching tickers', async () => {
   const user = userEvent.setup();
   await user.type(screen.getByRole('searchbox'), 'AA');
 
-  expect(await screen.findByText('AAPL')).toBeInTheDocument();
-  expect(screen.getByText('AAL')).toBeInTheDocument();
+  expect(await screen.findByText('$AAPL')).toBeInTheDocument();
+  expect(screen.getByText(/Apple Inc\./)).toBeInTheDocument();
+  expect(screen.getByText('$AAL')).toBeInTheDocument();
+  expect(screen.getByText(/American Airlines Group Inc/)).toBeInTheDocument();
   expect(api.searchCompanies).toHaveBeenCalledWith('AA');
 });
 
@@ -53,7 +58,7 @@ test('shows empty state on 204', async () => {
   const user = userEvent.setup();
   await user.type(screen.getByRole('searchbox'), 'ZZ');
 
-  expect(await screen.findByText(/no tickers match/i)).toBeInTheDocument();
+  expect(await screen.findByText(/no matches/i)).toBeInTheDocument();
 });
 
 test('shows error state when the seam throws', async () => {

@@ -1,5 +1,5 @@
-// Home page — marketing blurb + the featured top-5 risk-adjusted
-// tickers so the landing page has real content on first load.
+// Home page — marketing blurb + featured top-average-returns leaderboard
+// (SoT Route 5) so the landing page has real content on first load.
 
 import { useEffect, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
@@ -15,7 +15,11 @@ import {
 
 import { api } from '../services/api';
 import LazyTable from '../components/LazyTable';
-import { formatPercent, formatNumber, signedColor } from '../helpers/formatter';
+import { formatPercent, formatInteger, signedColor } from '../helpers/formatter';
+
+// Anchors returns to the dataset's latest trading day — no live data
+// after 2022-12-12.
+const END_DATE = '2022-12-12';
 
 function Signed({ value, children }) {
   return (
@@ -25,11 +29,8 @@ function Signed({ value, children }) {
   );
 }
 
-const WINDOW_START = '2022-01-01';
-const WINDOW_END = '2022-12-12';
-
 const COLUMNS = [
-  { field: 'rn', header: '#', align: 'right' },
+  { field: 'return_rank', header: '#', align: 'right' },
   {
     field: 'ticker',
     header: 'Ticker',
@@ -40,26 +41,36 @@ const COLUMNS = [
     ),
   },
   {
-    field: 'avg_daily_ret',
+    field: 'company_name',
+    header: 'Company',
+    render: (row) => row.company_name || '—',
+  },
+  {
+    field: 'sector_name',
+    header: 'Sector',
+    render: (row) => row.sector_name || '—',
+  },
+  {
+    field: 'avg_daily_return',
     header: 'Avg daily return',
     align: 'right',
     render: (row) => (
-      <Signed value={row.avg_daily_ret}>{formatPercent(row.avg_daily_ret, 3)}</Signed>
+      <Signed value={row.avg_daily_return}>
+        {formatPercent(row.avg_daily_return, 3)}
+      </Signed>
     ),
   },
   {
-    field: 'vol_daily_ret',
-    header: 'Daily volatility',
+    field: 'return_volatility',
+    header: 'Volatility',
     align: 'right',
-    render: (row) => formatPercent(row.vol_daily_ret, 3),
+    render: (row) => formatPercent(row.return_volatility, 3),
   },
   {
-    field: 'risk_adj_score',
-    header: 'Risk-adj. score',
+    field: 'n_obs',
+    header: 'Obs',
     align: 'right',
-    render: (row) => (
-      <Signed value={row.risk_adj_score}>{formatNumber(row.risk_adj_score, 3)}</Signed>
-    ),
+    render: (row) => formatInteger(row.n_obs),
   },
 ];
 
@@ -70,7 +81,7 @@ export default function HomePage() {
   useEffect(() => {
     let cancelled = false;
     api
-      .getRiskAdjusted(WINDOW_START, WINDOW_END, 5)
+      .getTopAverageReturns(END_DATE, 10, 5)
       .then((res) => {
         if (cancelled) return;
         if (res.status === 204) {
@@ -95,11 +106,12 @@ export default function HomePage() {
       <Typography variant="h1" gutterBottom>Stock News Trader</Typography>
       <Typography variant="body1" sx={{ mb: 4 }}>
         Explore S&amp;P-500-adjacent tickers. Pick a ticker to see its price
-        history, or jump into the leaderboards.
+        history, sector context, and recent news — or jump into the
+        leaderboards.
       </Typography>
 
       <Paper sx={{ p: 2 }} elevation={0}>
-        <Typography variant="h2" gutterBottom>Featured: top risk-adjusted</Typography>
+        <Typography variant="h2" gutterBottom>Featured: top average returns (~30d)</Typography>
         <FeaturedBody status={status} rows={rows} />
       </Paper>
     </Container>

@@ -1,14 +1,21 @@
-// StockChart — a thin wrapper around MUI X Charts for the closing-price
-// line. Keeps chart config in one place so pages just pass the series.
+// StockChart — wraps MUI X LineChart for the closing-price series.
+// Accepts the SoT /api/companies/:ticker/prices row shape:
+//   { trading_date, close, ma_7_day?, ma_30_day?, sector_avg_close? }
 //
-// `data` shape matches the /stocks/:ticker/history response:
-//   [{ trade_date, open, high, low, close, volume }]
+// Optional overlay flags toggle the moving-average and sector-benchmark
+// series without re-fetching.
 
 import { Box, Typography } from '@mui/material';
 import { LineChart } from '@mui/x-charts/LineChart';
 import { formatDate, formatNumber } from '../helpers/formatter';
 
-export default function StockChart({ data, height = 360 }) {
+export default function StockChart({
+  data,
+  height = 360,
+  showMa7 = false,
+  showMa30 = false,
+  showSectorAvg = false,
+}) {
   if (!data || data.length === 0) {
     return (
       <Box
@@ -28,14 +35,66 @@ export default function StockChart({ data, height = 360 }) {
     );
   }
 
-  const xData = data.map((d) => new Date(d.trade_date));
-  const yData = data.map((d) => Number(d.close));
+  const xData = data.map((d) => new Date(d.trading_date || d.trade_date));
+  const closeData = data.map((d) => (d.close == null ? null : Number(d.close)));
+
+  const series = [
+    {
+      data: closeData,
+      label: 'Close',
+      color: '#0d47a1',
+      showMark: false,
+      curve: 'monotoneX',
+      valueFormatter: (value) =>
+        value == null ? '—' : `$${formatNumber(value, 2)}`,
+    },
+  ];
+
+  if (showMa7 && data.some((d) => d.ma_7_day != null)) {
+    series.push({
+      data: data.map((d) => (d.ma_7_day == null ? null : Number(d.ma_7_day))),
+      label: 'MA 7d',
+      color: '#ef6c00',
+      showMark: false,
+      curve: 'monotoneX',
+      valueFormatter: (value) =>
+        value == null ? '—' : `$${formatNumber(value, 2)}`,
+    });
+  }
+
+  if (showMa30 && data.some((d) => d.ma_30_day != null)) {
+    series.push({
+      data: data.map((d) => (d.ma_30_day == null ? null : Number(d.ma_30_day))),
+      label: 'MA 30d',
+      color: '#6a1b9a',
+      showMark: false,
+      curve: 'monotoneX',
+      valueFormatter: (value) =>
+        value == null ? '—' : `$${formatNumber(value, 2)}`,
+    });
+  }
+
+  if (showSectorAvg && data.some((d) => d.sector_avg_close != null)) {
+    series.push({
+      data: data.map((d) =>
+        d.sector_avg_close == null ? null : Number(d.sector_avg_close),
+      ),
+      label: 'Sector avg',
+      color: '#2e7d32',
+      showMark: false,
+      curve: 'monotoneX',
+      valueFormatter: (value) =>
+        value == null ? '—' : `$${formatNumber(value, 2)}`,
+    });
+  }
+
+  const showLegend = series.length > 1;
 
   return (
     <Box sx={{ width: '100%', height }} aria-label="Closing price chart">
       <LineChart
         height={height}
-        margin={{ top: 16, right: 24, bottom: 40, left: 64 }}
+        margin={{ top: showLegend ? 40 : 16, right: 24, bottom: 40, left: 64 }}
         xAxis={[
           {
             data: xData,
@@ -50,26 +109,14 @@ export default function StockChart({ data, height = 360 }) {
             tickNumber: 6,
           },
         ]}
-        series={[
-          {
-            data: yData,
-            label: 'Close',
-            color: '#0d47a1',
-            showMark: false,
-            curve: 'monotoneX',
-            valueFormatter: (value) =>
-              value == null ? '—' : `$${formatNumber(value, 2)}`,
-          },
-        ]}
+        series={series}
         grid={{ vertical: true, horizontal: true }}
-        slotProps={{ legend: { hidden: true } }}
+        slotProps={{ legend: { hidden: !showLegend } }}
       />
     </Box>
   );
 }
 
-// Tick labels live in narrow gutters — avoid 2-decimal noise like $10.00.
-// Drop decimals for whole dollars; keep one for sub-dollar prices.
 function formatAxisPrice(value) {
   if (value == null || Number.isNaN(Number(value))) return '';
   const n = Number(value);

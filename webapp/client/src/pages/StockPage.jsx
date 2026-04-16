@@ -1,7 +1,7 @@
-// Stock detail page. Composes three API calls and renders:
-//   * Header card with latest close, volume, 30d return.
-//   * Closing-price line chart with a Yahoo-style range selector.
-//   * Similar-tickers table (correlation peers in a fixed 1Y window).
+// Stock detail page. Composes three SoT endpoints:
+//   * Route 2 — /companies/:ticker        (rich profile + snapshot + latest)
+//   * Route 3 — /companies/:ticker/prices (OHLCV + MA + sector benchmark)
+//   * Route 7 — /companies/:ticker/news   (articles with sentiment)
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -13,24 +13,16 @@ import {
   Box,
   Alert,
   CircularProgress,
-  Link as MuiLink,
   ToggleButton,
   ToggleButtonGroup,
+  FormControlLabel,
+  Switch,
+  Stack,
 } from '@mui/material';
-
-function Signed({ value, children }) {
-  return (
-    <Box component="span" sx={{ color: signedColor(value), fontWeight: 500 }}>
-      {children}
-    </Box>
-  );
-}
-
-import { Link as RouterLink } from 'react-router-dom';
 
 import { api } from '../services/api';
 import StockChart from '../components/StockChart';
-import LazyTable from '../components/LazyTable';
+import NewsCard from '../components/NewsCard';
 import {
   formatPercent,
   formatNumber,
@@ -43,8 +35,6 @@ import {
 // Dataset ends 2022-12-12. Range presets anchor to this "last trading
 // day" rather than today, since there is no post-2022 data.
 const DATA_END = '2022-12-12';
-const SIMILAR_WINDOW_START = '2022-01-01';
-const SIMILAR_WINDOW_END = DATA_END;
 
 const RANGES = [
   { key: '1W', label: '1W', days: 7 },
@@ -68,41 +58,45 @@ function rangeToWindow(key) {
   return { start: d.toISOString().slice(0, 10), end };
 }
 
+function Signed({ value, children }) {
+  return (
+    <Box component="span" sx={{ color: signedColor(value), fontWeight: 500 }}>
+      {children}
+    </Box>
+  );
+}
+
 export default function StockPage() {
   const { ticker } = useParams();
   const upper = String(ticker).toUpperCase();
 
   const [profile, setProfile] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [similar, setSimilar] = useState([]);
+  const [prices, setPrices] = useState([]);
+  const [news, setNews] = useState([]);
   const [status, setStatus] = useState('loading'); // loading | ok | not_found | error
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const [pricesLoading, setPricesLoading] = useState(false);
+  const [newsLoading, setNewsLoading] = useState(false);
   const [range, setRange] = useState('1W');
+  const [showMa7, setShowMa7] = useState(false);
+  const [showMa30, setShowMa30] = useState(false);
+  const [showSectorAvg, setShowSectorAvg] = useState(false);
 
   const window = useMemo(() => rangeToWindow(range), [range]);
 
-  // Profile + similar only depend on ticker. Similar uses a fixed 1Y
-  // window so correlation peers stay stable across range switches.
+  // Profile + news — depend only on ticker.
   useEffect(() => {
     let cancelled = false;
     setStatus('loading');
 
-    Promise.all([
-      api.getCompany(upper),
-      api.getSimilarCompanies(upper, SIMILAR_WINDOW_START, SIMILAR_WINDOW_END),
-    ])
-      .then(([profileRes, similarRes]) => {
+    api
+      .getCompany(upper)
+      .then((profileRes) => {
         if (cancelled) return;
         if (profileRes.status === 404) {
           setStatus('not_found');
           return;
         }
         setProfile(profileRes.data);
-        setSimilar(
-          similarRes.status === 204 || similarRes.status === 404
-            ? []
-            : similarRes.data,
-        );
         setStatus('ok');
       })
       .catch((err) => {
@@ -116,23 +110,53 @@ export default function StockPage() {
     };
   }, [upper]);
 
-  // History refetches whenever the selected range changes.
   useEffect(() => {
     let cancelled = false;
-    setHistoryLoading(true);
+    setNewsLoading(true);
     api
-      .getStockHistory(upper, window.start, window.end)
+      .getCompanyNews(upper, 30, 10)
       .then((res) => {
         if (cancelled) return;
-        setHistory(res.status === 204 ? [] : res.data);
+        if (res.status === 204 || res.status === 404) {
+          setNews([]);
+        } else {
+          setNews(res.data);
+        }
       })
       .catch((err) => {
         if (cancelled) return;
         console.error(err);
-        setHistory([]);
+        setNews([]);
       })
       .finally(() => {
-        if (!cancelled) setHistoryLoading(false);
+        if (!cancelled) setNewsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [upper]);
+
+  // Prices refetch whenever the selected range changes.
+  useEffect(() => {
+    let cancelled = false;
+    setPricesLoading(true);
+    api
+      .getCompanyPrices(upper, window.start, window.end)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.status === 204 || res.status === 404) {
+          setPrices([]);
+        } else {
+          setPrices(res.data);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error(err);
+        setPrices([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPricesLoading(false);
       });
 
     return () => {
@@ -142,47 +166,62 @@ export default function StockPage() {
 
   return (
     <Container component="main" sx={{ py: 4 }}>
-      <Typography variant="h1" gutterBottom>${upper}</Typography>
+      <Header profile={profile} ticker={upper} status={status} />
       <Body
         status={status}
         profile={profile}
-        history={history}
-        similar={similar}
+        prices={prices}
+        news={news}
         range={range}
         onRangeChange={setRange}
-        historyLoading={historyLoading}
+        pricesLoading={pricesLoading}
+        newsLoading={newsLoading}
+        showMa7={showMa7}
+        showMa30={showMa30}
+        showSectorAvg={showSectorAvg}
+        onToggleMa7={() => setShowMa7((v) => !v)}
+        onToggleMa30={() => setShowMa30((v) => !v)}
+        onToggleSectorAvg={() => setShowSectorAvg((v) => !v)}
       />
     </Container>
   );
 }
 
-const SIMILAR_COLUMNS = [
-  {
-    field: 'ticker',
-    header: 'Ticker',
-    render: (row) => (
-      <MuiLink component={RouterLink} to={`/stocks/${row.ticker}`}>
-        ${row.ticker}
-      </MuiLink>
-    ),
-  },
-  {
-    field: 'corr_ret',
-    header: 'Correlation',
-    align: 'right',
-    render: (row) => (
-      <Signed value={row.corr_ret}>{formatNumber(row.corr_ret, 3)}</Signed>
-    ),
-  },
-  {
-    field: 'n_overlap',
-    header: 'Days overlap',
-    align: 'right',
-    render: (row) => formatInteger(row.n_overlap),
-  },
-];
+function Header({ profile, ticker, status }) {
+  return (
+    <Box sx={{ mb: 2 }}>
+      <Typography variant="h1" gutterBottom sx={{ mb: 0 }}>${ticker}</Typography>
+      {status === 'ok' && profile && (
+        <Typography variant="body1" sx={{ color: 'text.secondary' }}>
+          {profile.company_name || '—'}
+          {(profile.sector_name || profile.industry_name) && (
+            <>
+              {' · '}
+              {[profile.sector_name, profile.industry_name].filter(Boolean).join(' · ')}
+            </>
+          )}
+        </Typography>
+      )}
+    </Box>
+  );
+}
 
-function Body({ status, profile, history, similar, range, onRangeChange, historyLoading }) {
+function Body({
+  status,
+  profile,
+  prices,
+  news,
+  range,
+  onRangeChange,
+  pricesLoading,
+  newsLoading,
+  showMa7,
+  showMa30,
+  showSectorAvg,
+  onToggleMa7,
+  onToggleMa30,
+  onToggleSectorAvg,
+}) {
   if (status === 'loading') {
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -200,12 +239,22 @@ function Body({ status, profile, history, similar, range, onRangeChange, history
 
   return (
     <>
-      <ProfileCard profile={profile} />
+      <LatestTradeSection profile={profile} />
+
       <Paper
         sx={{ p: 2, mt: 3, bgcolor: 'background.paper', color: 'text.primary' }}
         elevation={1}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 1 }}>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 1,
+            mb: 1,
+          }}
+        >
           <Typography variant="h2">Closing price (USD)</Typography>
           <ToggleButtonGroup
             size="small"
@@ -221,53 +270,176 @@ function Body({ status, profile, history, similar, range, onRangeChange, history
             ))}
           </ToggleButtonGroup>
         </Box>
-        {historyLoading ? (
+        <Stack direction="row" spacing={2} sx={{ mb: 1, flexWrap: 'wrap' }}>
+          <FormControlLabel
+            control={<Switch size="small" checked={showMa7} onChange={onToggleMa7} />}
+            label="7d moving avg"
+          />
+          <FormControlLabel
+            control={<Switch size="small" checked={showMa30} onChange={onToggleMa30} />}
+            label="30d moving avg"
+          />
+          <FormControlLabel
+            control={<Switch size="small" checked={showSectorAvg} onChange={onToggleSectorAvg} />}
+            label="Sector average"
+          />
+        </Stack>
+        {pricesLoading ? (
           <Box sx={{ height: 360, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <CircularProgress size={24} />
           </Box>
         ) : (
-          <StockChart data={history} />
+          <StockChart
+            data={prices}
+            showMa7={showMa7}
+            showMa30={showMa30}
+            showSectorAvg={showSectorAvg}
+          />
         )}
       </Paper>
 
+      <ValuationSection profile={profile} />
+      <OverviewSection profile={profile} />
+
       <Box sx={{ mt: 3 }}>
-        <Typography variant="h2" gutterBottom>Similar tickers</Typography>
-        <LazyTable
-          columns={SIMILAR_COLUMNS}
-          rows={similar}
-          emptyMessage="No correlated peers in this window."
-        />
+        <Typography variant="h2" gutterBottom>Recent news</Typography>
+        {newsLoading ? (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CircularProgress size={20} />
+            <Typography>Loading news…</Typography>
+          </Box>
+        ) : news.length === 0 ? (
+          <Typography color="text.secondary">No recent articles for this ticker.</Typography>
+        ) : (
+          <Stack spacing={1.5}>
+            {news.map((article) => (
+              <NewsCard key={article.url || article.title} article={article} />
+            ))}
+          </Stack>
+        )}
       </Box>
     </>
   );
 }
 
-function ProfileCard({ profile }) {
+// Profile is split into three independent section components so `Body`
+// can interleave the closing-price chart between Latest trade and
+// Valuation snapshot. Each sits in its own Paper with matching top
+// margin; the chart Paper uses the same `mt: 3` so the rhythm stays
+// consistent without the old Stack wrapper.
+
+function LatestTradeSection({ profile }) {
   if (!profile) return null;
   const stats = [
-    { label: 'Latest date', value: formatDate(profile.latest_date) },
+    { label: 'Latest date', value: formatDate(profile.latest_trading_date) },
     { label: 'Latest close', value: formatPrice(profile.latest_close) },
     { label: 'Latest volume', value: formatInteger(profile.latest_volume) },
     {
-      label: '30-day return',
-      value: formatPercent(profile.return_30_trading_days),
-      color: signedColor(profile.return_30_trading_days),
+      label: '52w range',
+      value:
+        profile.week_52_low != null && profile.week_52_high != null
+          ? `${formatPrice(profile.week_52_low)} – ${formatPrice(profile.week_52_high)}`
+          : '—',
     },
   ];
   return (
     <Paper sx={{ p: 2 }} elevation={1}>
-      <Grid container spacing={2}>
-        {stats.map((stat) => (
-          <Grid item xs={6} md={3} key={stat.label}>
-            <Typography variant="caption" color="text.secondary">
-              {stat.label}
-            </Typography>
-            <Typography variant="h2" sx={{ fontSize: '1.25rem', color: stat.color }}>
-              {stat.value}
-            </Typography>
-          </Grid>
-        ))}
-      </Grid>
+      <SectionHeading>Latest trade</SectionHeading>
+      <StatGrid stats={stats} />
     </Paper>
   );
 }
+
+function ValuationSection({ profile }) {
+  if (!profile) return null;
+  const stats = [
+    {
+      label: 'Market cap',
+      value: formatInteger(profile.snapshot_market_cap || profile.profile_market_cap),
+    },
+    {
+      label: 'EBITDA',
+      value: formatInteger(profile.snapshot_ebitda || profile.profile_ebitda),
+    },
+    { label: 'P/E', value: formatNumber(profile.price_earnings, 1) },
+    {
+      label: 'Dividend yield',
+      value: profile.dividend_yield == null ? '—' : formatPercent(profile.dividend_yield, 2),
+      color: signedColor(profile.dividend_yield),
+    },
+    { label: 'EPS', value: formatNumber(profile.earnings_share, 2) },
+    { label: 'P/S', value: formatNumber(profile.price_sales, 2) },
+    { label: 'P/B', value: formatNumber(profile.price_book, 2) },
+    {
+      label: 'Revenue growth',
+      value:
+        profile.profile_revenue_growth == null
+          ? '—'
+          : formatPercent(profile.profile_revenue_growth, 1),
+      color: signedColor(profile.profile_revenue_growth),
+    },
+  ];
+  return (
+    <Paper sx={{ p: 2, mt: 3 }} elevation={1}>
+      <SectionHeading>Valuation snapshot</SectionHeading>
+      <StatGrid stats={stats} />
+    </Paper>
+  );
+}
+
+function OverviewSection({ profile }) {
+  if (!profile) return null;
+  const stats = [
+    { label: 'Exchange', value: profile.exchange || '—' },
+    {
+      label: 'Location',
+      value:
+        [profile.city, profile.state, profile.country].filter(Boolean).join(', ') || '—',
+    },
+    { label: 'CIK', value: profile.cik || '—' },
+    {
+      label: 'S&P 500 weight',
+      value: profile.sp500_weight == null ? '—' : formatPercent(profile.sp500_weight, 2),
+    },
+  ];
+  return (
+    <Paper sx={{ p: 2, mt: 3 }} elevation={1}>
+      <SectionHeading>Overview</SectionHeading>
+      <StatGrid stats={stats} />
+      {profile.long_business_summary && (
+        <Typography variant="body2" sx={{ color: 'text.secondary', mt: 2 }}>
+          {profile.long_business_summary}
+        </Typography>
+      )}
+    </Paper>
+  );
+}
+
+function SectionHeading({ children }) {
+  return (
+    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+      {children}
+    </Typography>
+  );
+}
+
+function StatGrid({ stats }) {
+  return (
+    <Grid container spacing={2}>
+      {stats.map((stat) => (
+        <Grid item xs={6} md={3} key={stat.label}>
+          <Typography variant="caption" color="text.secondary">
+            {stat.label}
+          </Typography>
+          <Typography variant="h2" sx={{ fontSize: '1.1rem', color: stat.color }}>
+            {stat.value}
+          </Typography>
+        </Grid>
+      ))}
+    </Grid>
+  );
+}
+
+// Re-export Signed for potential test composition (referenced only to
+// keep the helper in tree-shaking range when other pages adopt it).
+export { Signed };

@@ -1,0 +1,7 @@
+[
+  { "ticker": "NVDA", "company_name": "NVIDIA Corporation", "industry_name": "Semiconductors", "sector_name": "Technology", "as_of_date": "2022-12-12", "return_7d": 11.24, "avg_sector_return": 3.81, "sector_rank": 1 },
+  { "ticker": "MSFT", "company_name": "Microsoft Corporation", "industry_name": "Software Infrastructure", "sector_name": "Technology", "as_of_date": "2022-12-12", "return_7d": 5.34, "avg_sector_return": 3.81, "sector_rank": 2 },
+  { "ticker": "AAPL", "company_name": "Apple Inc.", "industry_name": "Consumer Electronics", "sector_name": "Technology", "as_of_date": "2022-12-12", "return_7d": 4.12, "avg_sector_return": 3.81, "sector_rank": 3 },
+  { "ticker": "AMZN", "company_name": "Amazon.com, Inc.", "industry_name": "Internet Retail", "sector_name": "Consumer Discretionary", "as_of_date": "2022-12-12", "return_7d": 6.12, "avg_sector_return": 2.32, "sector_rank": 1 },
+  { "ticker": "META", "company_name": "Meta Platforms, Inc.", "industry_name": "Interactive Media & Services", "sector_name": "Communication Services", "as_of_date": "2022-12-12", "return_7d": 4.56, "avg_sector_return": 2.01, "sector_rank": 1 }
+]

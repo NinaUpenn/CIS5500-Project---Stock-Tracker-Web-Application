@@ -1,8 +1,4 @@
-// Top-level app: theming + routing. One place to see every page the
-// app has. Phase 1 routes are listed below; Phase 2's /news and
-// /industries are deliberately wired now so the nav has something to
-// point at — they render the ComingSoon placeholder until the stubs
-// feature PR lands.
+// Top-level app: theming + routing. One place to see every page.
 
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';
@@ -13,7 +9,8 @@ import HomePage from './pages/HomePage';
 import SearchPage from './pages/SearchPage';
 import StockPage from './pages/StockPage';
 import LeaderboardsPage from './pages/LeaderboardsPage';
-import ComingSoonPage from './pages/ComingSoonPage';
+import TrendingNewsPage from './pages/TrendingNewsPage';
+import IndustryRotationsPage from './pages/IndustryRotationsPage';
 
 export default function App() {
   return (
@@ -28,8 +25,8 @@ export default function App() {
           <Route path="/search" element={<SearchPage />} />
           <Route path="/stocks/:ticker" element={<StockPage />} />
           <Route path="/leaderboards" element={<LeaderboardsPage />} />
-          <Route path="/news" element={<ComingSoonPage pageKey="news" />} />
-          <Route path="/industries" element={<ComingSoonPage pageKey="industries" />} />
+          <Route path="/news" element={<TrendingNewsPage />} />
+          <Route path="/industries" element={<IndustryRotationsPage />} />
         </Routes>
       </BrowserRouter>
     </ThemeProvider>

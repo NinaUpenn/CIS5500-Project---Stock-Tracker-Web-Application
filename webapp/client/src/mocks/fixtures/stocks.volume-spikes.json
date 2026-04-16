@@ -1,9 +1,0 @@
-[
-  { "ticker": "TSLA", "spike_days": 18, "avg_zscore": 3.42 },
-  { "ticker": "NVDA", "spike_days": 14, "avg_zscore": 3.10 },
-  { "ticker": "META", "spike_days": 12, "avg_zscore": 2.98 },
-  { "ticker": "AMZN", "spike_days": 11, "avg_zscore": 2.74 },
-  { "ticker": "AAPL", "spike_days": 9, "avg_zscore": 2.55 },
-  { "ticker": "MSFT", "spike_days": 7, "avg_zscore": 2.38 },
-  { "ticker": "GOOGL", "spike_days": 6, "avg_zscore": 2.22 }
-]

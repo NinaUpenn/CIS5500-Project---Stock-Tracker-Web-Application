@@ -10,10 +10,10 @@ test('renders empty-state when no data', () => {
   expect(screen.getByRole('status')).toHaveTextContent(/no price history/i);
 });
 
-test('renders the chart container when data is provided', () => {
+test('renders the chart container with trading_date rows', () => {
   const data = [
-    { trade_date: '2022-11-01', open: 1, high: 2, low: 1, close: 2, volume: 100 },
-    { trade_date: '2022-11-02', open: 2, high: 3, low: 2, close: 3, volume: 150 },
+    { trading_date: '2022-11-01', open: 1, high: 2, low: 1, close: 2, volume: 100 },
+    { trading_date: '2022-11-02', open: 2, high: 3, low: 2, close: 3, volume: 150 },
   ];
   render(<StockChart data={data} />);
   expect(screen.getByLabelText(/closing price chart/i)).toBeInTheDocument();

@@ -1,0 +1,9 @@
+[
+  { "ticker": "NVDA", "company_name": "NVIDIA Corporation", "industry_name": "Semiconductors", "sector_name": "Technology", "avg_daily_return": 0.00412, "return_volatility": 0.0285, "n_obs": 21, "return_rank": 1 },
+  { "ticker": "META", "company_name": "Meta Platforms, Inc.", "industry_name": "Interactive Media & Services", "sector_name": "Communication Services", "avg_daily_return": 0.00318, "return_volatility": 0.0244, "n_obs": 21, "return_rank": 2 },
+  { "ticker": "MSFT", "company_name": "Microsoft Corporation", "industry_name": "Software Infrastructure", "sector_name": "Technology", "avg_daily_return": 0.00251, "return_volatility": 0.0182, "n_obs": 21, "return_rank": 3 },
+  { "ticker": "AAPL", "company_name": "Apple Inc.", "industry_name": "Consumer Electronics", "sector_name": "Technology", "avg_daily_return": 0.00168, "return_volatility": 0.0197, "n_obs": 21, "return_rank": 4 },
+  { "ticker": "GOOGL", "company_name": "Alphabet Inc.", "industry_name": "Interactive Media & Services", "sector_name": "Communication Services", "avg_daily_return": 0.00142, "return_volatility": 0.0215, "n_obs": 21, "return_rank": 5 },
+  { "ticker": "AMZN", "company_name": "Amazon.com, Inc.", "industry_name": "Internet Retail", "sector_name": "Consumer Discretionary", "avg_daily_return": -0.00115, "return_volatility": 0.0251, "n_obs": 21, "return_rank": 6 },
+  { "ticker": "TSLA", "company_name": "Tesla, Inc.", "industry_name": "Auto Manufacturers", "sector_name": "Consumer Discretionary", "avg_daily_return": -0.00842, "return_volatility": 0.0421, "n_obs": 21, "return_rank": 7 }
+]

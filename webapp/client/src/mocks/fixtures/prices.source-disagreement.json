@@ -1,0 +1,5 @@
+[
+  { "ticker": "TSLA", "company_name": "Tesla, Inc.", "trading_date": "2022-11-04", "n_sources": 2, "min_close": 214.98, "max_close": 215.67, "close_spread": 0.69, "pct_spread": 0.32 },
+  { "ticker": "AAPL", "company_name": "Apple Inc.", "trading_date": "2022-10-28", "n_sources": 2, "min_close": 155.74, "max_close": 155.92, "close_spread": 0.18, "pct_spread": 0.12 },
+  { "ticker": "MSFT", "company_name": "Microsoft Corporation", "trading_date": "2022-11-22", "n_sources": 2, "min_close": 247.49, "max_close": 247.68, "close_spread": 0.19, "pct_spread": 0.08 }
+]

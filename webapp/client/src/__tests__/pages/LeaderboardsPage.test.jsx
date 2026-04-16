@@ -5,8 +5,12 @@ import { MemoryRouter } from 'react-router-dom';
 jest.mock('../../services/api', () => ({
   __esModule: true,
   api: {
-    getRiskAdjusted: jest.fn(),
-    getVolumeSpikes: jest.fn(),
+    getTopGainers: jest.fn(),
+    getTopAverageReturns: jest.fn(),
+    getSectorMomentum: jest.fn(),
+    getTrendingNews: jest.fn(),
+    getSourceDisagreement: jest.fn(),
+    getSectors: jest.fn(),
   },
 }));
 
@@ -14,8 +18,13 @@ import { api } from '../../services/api';
 import LeaderboardsPage from '../../pages/LeaderboardsPage';
 
 beforeEach(() => {
-  api.getRiskAdjusted.mockReset();
-  api.getVolumeSpikes.mockReset();
+  api.getTopGainers.mockReset();
+  api.getTopAverageReturns.mockReset();
+  api.getSectorMomentum.mockReset();
+  api.getTrendingNews.mockReset();
+  api.getSourceDisagreement.mockReset();
+  api.getSectors.mockReset();
+  api.getSectors.mockResolvedValue({ data: [], status: 204 });
 });
 
 function renderPage() {
@@ -26,9 +35,20 @@ function renderPage() {
   );
 }
 
-test('risk-adjusted tab loads on mount', async () => {
-  api.getRiskAdjusted.mockResolvedValueOnce({
-    data: [{ ticker: 'NVDA', avg_daily_ret: 0.003, vol_daily_ret: 0.029, n_days: 250, risk_adj_score: 0.098, rn: 1 }],
+test('default tab loads top average returns', async () => {
+  api.getTopAverageReturns.mockResolvedValueOnce({
+    data: [
+      {
+        ticker: 'NVDA',
+        company_name: 'NVIDIA Corporation',
+        sector_name: 'Technology',
+        industry_name: 'Semiconductors',
+        avg_daily_return: 0.003,
+        return_volatility: 0.029,
+        n_obs: 21,
+        return_rank: 1,
+      },
+    ],
     status: 200,
   });
 
@@ -37,21 +57,42 @@ test('risk-adjusted tab loads on mount', async () => {
   expect(await screen.findByRole('link', { name: '$NVDA' })).toBeInTheDocument();
 });
 
-test('switching tabs triggers the spikes fetcher', async () => {
-  api.getRiskAdjusted.mockResolvedValueOnce({
-    data: [{ ticker: 'NVDA', rn: 1, avg_daily_ret: 0.003, vol_daily_ret: 0.029, n_days: 250, risk_adj_score: 0.098 }],
+test('switching tabs triggers the right fetcher', async () => {
+  api.getTopAverageReturns.mockResolvedValueOnce({
+    data: [
+      {
+        ticker: 'NVDA',
+        company_name: 'NVIDIA',
+        sector_name: 'Technology',
+        industry_name: 'Semi',
+        avg_daily_return: 0.003,
+        return_volatility: 0.029,
+        n_obs: 21,
+        return_rank: 1,
+      },
+    ],
     status: 200,
   });
-  api.getVolumeSpikes.mockResolvedValueOnce({
-    data: [{ ticker: 'TSLA', spike_days: 18, avg_zscore: 3.42 }],
+  api.getTrendingNews.mockResolvedValueOnce({
+    data: [
+      {
+        ticker: 'TSLA',
+        company_name: 'Tesla, Inc.',
+        sector_name: 'Consumer Discretionary',
+        industry_name: 'Auto',
+        article_count: 22,
+        avg_sector_mentions: 6.4,
+        sector_rank: 1,
+      },
+    ],
     status: 200,
   });
 
   renderPage();
 
   await screen.findByRole('link', { name: '$NVDA' });
-  await userEvent.click(screen.getByRole('tab', { name: /volume spikes/i }));
+  await userEvent.click(screen.getByRole('tab', { name: /trending news/i }));
 
   expect(await screen.findByRole('link', { name: '$TSLA' })).toBeInTheDocument();
-  expect(api.getVolumeSpikes).toHaveBeenCalled();
+  expect(api.getTrendingNews).toHaveBeenCalled();
 });

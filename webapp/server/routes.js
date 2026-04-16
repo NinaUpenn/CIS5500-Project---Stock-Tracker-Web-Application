@@ -5,6 +5,13 @@
 // `initRoutes(pool)` — that keeps handlers easy to unit-test (tests call
 // `initRoutes(fakePool)` and then `request(app)`).
 //
+// All SQL matches the source-of-truth document:
+//   personal-notes/SQL for the final core API routes_queries.md
+//
+// 10 core routes + 3 helper routes, normalized against:
+//   company, industry, sector, company_profile, company_financial_snapshot,
+//   news_article, article_mention, price_daily, primary_price_daily view.
+//
 // All SQL MUST be parameterized ($1, $2, ...). Never interpolate user
 // input into a query string.
 
@@ -14,53 +21,163 @@ function initRoutes(injectedPool) {
   pool = injectedPool;
 }
 
-// Simple liveness check — used by tests and manual smoke checks.
+const SERVER_STARTED_AT = Date.now();
+const API_VERSION = 'v1';
+
+/**
+ * @openapi
+ * /health:
+ *   get:
+ *     summary: Liveness + database readiness probe
+ *     description: >
+ *       Returns 200 when the server is up and can reach Postgres. Returns
+ *       503 when the DB probe fails (server is serving traffic but data
+ *       routes will error).
+ *     tags: [Meta]
+ *     responses:
+ *       200:
+ *         description: Server and database both healthy
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/HealthReport' }
+ *       503:
+ *         description: Server up, database unreachable
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/HealthReport' }
+ */
 async function health(_req, res) {
-  res.status(200).json({ status: 'ok' });
+  const base = {
+    status: 'ok',
+    time: new Date().toISOString(),
+    api_version: API_VERSION,
+    uptime_s: Math.round((Date.now() - SERVER_STARTED_AT) / 1000),
+  };
+
+  // Quick round-trip to Postgres: proves the pool is live and returns a
+  // useful server_version string. `version()` is cheap (no table access).
+  const t0 = Date.now();
+  try {
+    const { rows } = await pool.query('SELECT version() AS server_version');
+    return res.status(200).json({
+      ...base,
+      database: {
+        reachable: true,
+        latency_ms: Date.now() - t0,
+        server_version: rows[0].server_version,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(503).json({
+      ...base,
+      status: 'degraded',
+      database: {
+        reachable: false,
+        latency_ms: Date.now() - t0,
+        error: err.message,
+      },
+    });
+  }
 }
 
-// Helper: log once, return 500. Kept inline so every route handles
-// unexpected DB errors the same way without extra plumbing.
 function dbError(res, err) {
   console.error(err);
   res.status(500).json({ error: 'database error' });
 }
 
-// Helper: parse+validate a positive integer query param with default.
+// ---------- param parsing helpers ----------
+
 function parsePositiveInt(raw, fallback) {
-  if (raw === undefined) return { value: fallback, ok: true };
+  if (raw === undefined || raw === null || raw === '') return { value: fallback, ok: true };
   const n = Number(raw);
   if (!Number.isInteger(n) || n <= 0) return { ok: false };
   return { value: n, ok: true };
 }
 
+function parseDate(raw) {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, value: null };
+  if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return { ok: false };
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? { ok: false } : { ok: true, value: raw };
+}
+
+function parseRequiredDate(raw) {
+  if (!raw) return { ok: false };
+  return parseDate(raw);
+}
+
+// ---------- Route 1 — GET /api/companies/search ----------
+
 /**
- * GET /companies/search?q=<prefix>&limit=<int>
- * Distinct-symbol prefix search against combined_stock_data_staging.
- * 200 with [{ ticker }], 204 when no match, 400 when `q` missing,
- * 422 when `limit` is not a positive integer.
+ * @openapi
+ * /companies/search:
+ *   get:
+ *     summary: Prefix search companies by ticker or name
+ *     tags: [Companies]
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         required: true
+ *         schema: { type: string }
+ *         description: Search text. Matches ticker prefix or company-name prefix.
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20, minimum: 1 }
+ *     responses:
+ *       200:
+ *         description: Matching companies ranked by prefix specificity then ticker
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items: { $ref: '#/components/schemas/CompanyListing' }
+ *       204: { description: No matches }
+ *       400:
+ *         description: q missing
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       422: { description: limit is not a positive integer }
+ *       500: { description: Database error }
  */
 async function searchCompanies(req, res) {
   const { q } = req.query;
   if (!q || typeof q !== 'string' || q.trim() === '') {
     return res.status(400).json({ error: 'q is required' });
   }
-
-  const limit = parsePositiveInt(req.query.limit, 50);
+  const limit = parsePositiveInt(req.query.limit, 20);
   if (!limit.ok) {
     return res.status(422).json({ error: 'limit must be a positive integer' });
   }
 
   try {
     const { rows } = await pool.query(
-      `SELECT DISTINCT symbol AS ticker
-       FROM combined_stock_data_staging
-       WHERE symbol ILIKE $1 || '%'
-       ORDER BY symbol
-       LIMIT $2`,
-      [q.trim(), limit.value],
+      `select
+         c.company_id,
+         c.ticker,
+         c.company_name,
+         i.industry_name,
+         s.sector_name
+       from company c
+       left join industry i on i.industry_id = c.industry_id
+       left join sector s on s.sector_id = i.sector_id
+       where nullif(trim($1), '') is not null
+         and (
+           c.ticker ilike upper(trim($1)) || '%'
+           or c.company_name ilike trim($1) || '%'
+         )
+       order by
+         case
+           when c.ticker = upper(trim($1)) then 0
+           when c.ticker ilike upper(trim($1)) || '%' then 1
+           when c.company_name ilike trim($1) || '%' then 2
+           else 3
+         end,
+         c.ticker
+       limit coalesce($2::int, 20)`,
+      [q, limit.value],
     );
-
     if (rows.length === 0) return res.status(204).send();
     return res.status(200).json(rows);
   } catch (err) {
@@ -68,82 +185,199 @@ async function searchCompanies(req, res) {
   }
 }
 
-// Helper: strict ISO date validation so a malformed `start_date` never
-// reaches the DB. Anything that can't be parsed as YYYY-MM-DD is 400.
-function parseDate(raw) {
-  if (!raw || typeof raw !== 'string') return { ok: false };
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return { ok: false };
-  const d = new Date(raw);
-  return Number.isNaN(d.getTime()) ? { ok: false } : { ok: true, value: raw };
-}
+// ---------- Route 2 — GET /api/companies/:ticker ----------
 
 /**
- * GET /companies/:ticker
- * Ticker + latest OHLCV + ~30-trading-day return.
- * 200 when found, 404 when no rows exist for the ticker.
+ * @openapi
+ * /companies/{ticker}:
+ *   get:
+ *     summary: Full company profile
+ *     description: >
+ *       Joins company, industry, sector, company_profile,
+ *       company_financial_snapshot, and the most recent row from
+ *       primary_price_daily.
+ *     tags: [Companies]
+ *     parameters:
+ *       - in: path
+ *         name: ticker
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Rich company row with profile + snapshot + latest trade
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/CompanyProfile' }
+ *       404: { description: Ticker not found }
+ *       500: { description: Database error }
  */
 async function getCompany(req, res) {
-  const ticker = String(req.params.ticker || '').toUpperCase();
+  const ticker = String(req.params.ticker || '').trim();
   if (!ticker) return res.status(400).json({ error: 'ticker required' });
 
   try {
     const { rows } = await pool.query(
-      `WITH recent AS (
-         SELECT trade_date, close, volume,
-                ROW_NUMBER() OVER (ORDER BY trade_date DESC) AS rn
-         FROM combined_stock_data_staging
-         WHERE symbol = $1
-       )
-       SELECT
-         $1 AS ticker,
-         MAX(CASE WHEN rn = 1  THEN trade_date END) AS latest_date,
-         MAX(CASE WHEN rn = 1  THEN close      END) AS latest_close,
-         MAX(CASE WHEN rn = 1  THEN volume     END) AS latest_volume,
-         CASE
-           WHEN MAX(CASE WHEN rn = 30 THEN close END) IS NULL THEN NULL
-           ELSE (MAX(CASE WHEN rn = 1 THEN close END) - MAX(CASE WHEN rn = 30 THEN close END))
-                / MAX(CASE WHEN rn = 30 THEN close END)
-         END AS return_30_trading_days
-       FROM recent
-       WHERE rn <= 30`,
+      `select
+         c.company_id,
+         c.ticker,
+         c.company_name,
+         c.exchange,
+         c.cik,
+         i.industry_name,
+         s.sector_name,
+
+         cp.short_name,
+         cp.long_name,
+         cp.city,
+         cp.state,
+         cp.country,
+         cp.long_business_summary,
+         cp.current_price as profile_current_price,
+         cp.market_cap as profile_market_cap,
+         cp.ebitda as profile_ebitda,
+         cp.revenue_growth as profile_revenue_growth,
+         cp.weight as sp500_weight,
+
+         cfs.price as snapshot_price,
+         cfs.price_earnings,
+         cfs.dividend_yield,
+         cfs.earnings_share,
+         cfs.week_52_low,
+         cfs.week_52_high,
+         cfs.market_cap as snapshot_market_cap,
+         cfs.ebitda as snapshot_ebitda,
+         cfs.price_sales,
+         cfs.price_book,
+         cfs.sec_filings,
+
+         lp.trading_date as latest_trading_date,
+         lp.close as latest_close,
+         lp.volume as latest_volume
+       from company c
+       left join industry i on i.industry_id = c.industry_id
+       left join sector s on s.sector_id = i.sector_id
+       left join company_profile cp on cp.company_id = c.company_id
+       left join company_financial_snapshot cfs on cfs.company_id = c.company_id
+       left join lateral (
+         select pp.trading_date, pp.close, pp.volume
+         from primary_price_daily pp
+         where pp.company_id = c.company_id
+         order by pp.trading_date desc
+         limit 1
+       ) lp on true
+       where c.ticker = upper(trim($1))`,
       [ticker],
     );
-
     const row = rows[0];
-    if (!row || row.latest_date === null) {
-      return res.status(404).json({ error: 'ticker not found' });
-    }
+    if (!row) return res.status(404).json({ error: 'ticker not found' });
     return res.status(200).json(row);
   } catch (err) {
     return dbError(res, err);
   }
 }
 
+// ---------- Route 3 — GET /api/companies/:ticker/prices ----------
+
 /**
- * GET /stocks/:ticker/history?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
- * OHLCV series for charting.
- * 200 with [{ trade_date, open, high, low, close, volume }],
- * 204 when range is empty, 400 when dates are missing/malformed.
+ * @openapi
+ * /companies/{ticker}/prices:
+ *   get:
+ *     summary: OHLCV price series with sector benchmark + moving averages
+ *     description: >
+ *       Returns daily OHLCV for the ticker plus per-day sector-average close,
+ *       sector-relative close rank, 7- and 30-day moving averages, and daily
+ *       return percent.
+ *     tags: [Companies]
+ *     parameters:
+ *       - in: path
+ *         name: ticker
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: start_date
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: end_date
+ *         schema: { type: string, format: date }
+ *     responses:
+ *       200:
+ *         description: Daily price rows in ascending date order
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items: { $ref: '#/components/schemas/CompanyPriceRow' }
+ *       204: { description: No prices in range }
+ *       400: { description: Malformed dates }
+ *       500: { description: Database error }
  */
-async function getStockHistory(req, res) {
-  const ticker = String(req.params.ticker || '').toUpperCase();
+async function getCompanyPrices(req, res) {
+  const ticker = String(req.params.ticker || '').trim();
+  if (!ticker) return res.status(400).json({ error: 'ticker required' });
   const start = parseDate(req.query.start_date);
   const end = parseDate(req.query.end_date);
-
-  if (!ticker) return res.status(400).json({ error: 'ticker required' });
   if (!start.ok || !end.ok) {
-    return res.status(400).json({ error: 'start_date and end_date (YYYY-MM-DD) required' });
+    return res.status(400).json({ error: 'start_date / end_date must be YYYY-MM-DD' });
   }
 
   try {
     const { rows } = await pool.query(
-      `SELECT trade_date, open, high, low, close, volume
-       FROM combined_stock_data_staging
-       WHERE symbol = $1 AND trade_date BETWEEN $2 AND $3
-       ORDER BY trade_date ASC`,
+      `with target as (
+         select c.company_id, c.ticker, c.company_name,
+                i.industry_id, i.industry_name,
+                s.sector_id, s.sector_name
+         from company c
+         join industry i on i.industry_id = c.industry_id
+         join sector s on s.sector_id = i.sector_id
+         where c.ticker = upper(trim($1))
+       ),
+       company_prices as (
+         select pp.company_id, pp.trading_date, pp.open, pp.high, pp.low,
+                pp.close, pp.adj_close, pp.volume
+         from primary_price_daily pp
+         join target t on t.company_id = pp.company_id
+         where ($2::date is null or pp.trading_date >= $2::date)
+           and ($3::date is null or pp.trading_date <= $3::date)
+       ),
+       sector_prices as (
+         select pp.company_id, pp.trading_date, pp.close
+         from primary_price_daily pp
+         join company c on c.company_id = pp.company_id
+         join industry i on i.industry_id = c.industry_id
+         join target t on t.sector_id = i.sector_id
+         where ($2::date is null or pp.trading_date >= $2::date)
+           and ($3::date is null or pp.trading_date <= $3::date)
+       ),
+       sector_benchmark as (
+         select trading_date, avg(close) as sector_avg_close
+         from sector_prices
+         group by trading_date
+       ),
+       sector_ranks as (
+         select trading_date, company_id,
+                rank() over (partition by trading_date order by close desc nulls last) as sector_price_rank
+         from sector_prices
+       )
+       select
+         t.company_name,
+         t.ticker,
+         t.sector_name,
+         t.industry_name,
+         cp.trading_date,
+         cp.open, cp.high, cp.low, cp.close, cp.adj_close, cp.volume,
+         (cp.close / nullif(lag(cp.close) over (order by cp.trading_date), 0) - 1) * 100 as daily_return_pct,
+         avg(cp.close) over (order by cp.trading_date rows between 6 preceding and current row) as ma_7_day,
+         avg(cp.close) over (order by cp.trading_date rows between 29 preceding and current row) as ma_30_day,
+         sb.sector_avg_close,
+         sr.sector_price_rank
+       from company_prices cp
+       cross join target t
+       left join sector_benchmark sb on sb.trading_date = cp.trading_date
+       left join sector_ranks sr on sr.company_id = cp.company_id
+                                 and sr.trading_date = cp.trading_date
+       order by cp.trading_date`,
       [ticker, start.value, end.value],
     );
-
     if (rows.length === 0) return res.status(204).send();
     return res.status(200).json(rows);
   } catch (err) {
@@ -151,76 +385,369 @@ async function getStockHistory(req, res) {
   }
 }
 
-/**
- * GET /companies/:ticker/similar?start_date&end_date&min_overlap_days
- *
- * Peers ranked by Pearson correlation of daily simple returns against
- * the target ticker over the same window. Pearson's r is the standard
- * co-movement metric for equity returns (see e.g. Elton-Gruber-Brown
- * "Modern Portfolio Theory", Ch. 5).
- *
- * The same |ret| <= 0.5 outlier clip as /stocks/risk-adjusted is applied
- * to BOTH sides of the correlation. Without it, an unadjusted split on
- * either the target or a peer drags the correlation toward ±1 spuriously.
- *
- * 200 with [{ ticker, n_overlap, corr_ret }], 204 when no peers clear
- * the overlap threshold, 404 when the target ticker has no data in
- * range.
- */
-async function getSimilarCompanies(req, res) {
-  const ticker = String(req.params.ticker || '').toUpperCase();
-  const start = parseDate(req.query.start_date);
-  const end = parseDate(req.query.end_date);
-  const overlap = parsePositiveInt(req.query.min_overlap_days, 30);
+// ---------- Route 4 — GET /api/stocks/top-gainers ----------
 
+/**
+ * @openapi
+ * /stocks/top-gainers:
+ *   get:
+ *     summary: Daily top gainers vs sector average
+ *     description: >
+ *       Stocks whose day-over-day return beat their own sector average on the
+ *       given trading day. Previous trading day is found per-company via
+ *       LATERAL so weekends/holidays stay aligned.
+ *     tags: [Stocks]
+ *     parameters:
+ *       - in: query
+ *         name: trading_date
+ *         required: true
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 10, minimum: 1 }
+ *     responses:
+ *       200:
+ *         description: Gainer rows ordered by pct_change desc
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items: { $ref: '#/components/schemas/TopGainerRow' }
+ *       204: { description: No gainers for that date }
+ *       400: { description: trading_date missing or malformed }
+ *       500: { description: Database error }
+ */
+async function getTopGainers(req, res) {
+  const tradingDate = parseRequiredDate(req.query.trading_date);
+  if (!tradingDate.ok) {
+    return res.status(400).json({ error: 'trading_date (YYYY-MM-DD) is required' });
+  }
+  const limit = parsePositiveInt(req.query.limit, 10);
+  if (!limit.ok) return res.status(422).json({ error: 'limit must be a positive integer' });
+
+  try {
+    const { rows } = await pool.query(
+      `with latest as (
+         select pp.company_id, pp.trading_date, pp.close
+         from primary_price_daily pp
+         where pp.trading_date = $1::date
+       ),
+       with_prev as (
+         select l.company_id, l.trading_date, l.close,
+                p.prev_trading_date, p.prev_close,
+                (l.close / nullif(p.prev_close, 0) - 1) * 100 as pct_change
+         from latest l
+         join lateral (
+           select pp2.trading_date as prev_trading_date, pp2.close as prev_close
+           from primary_price_daily pp2
+           where pp2.company_id = l.company_id and pp2.trading_date < l.trading_date
+           order by pp2.trading_date desc
+           limit 1
+         ) p on true
+       ),
+       sector_avg as (
+         select i.sector_id, avg(wp.pct_change) as avg_sector_change
+         from with_prev wp
+         join company c on c.company_id = wp.company_id
+         join industry i on i.industry_id = c.industry_id
+         group by i.sector_id
+       )
+       select
+         c.ticker, c.company_name,
+         s.sector_name, i.industry_name,
+         wp.trading_date, wp.prev_trading_date,
+         wp.close, wp.prev_close, wp.pct_change,
+         sa.avg_sector_change,
+         rank() over (partition by s.sector_id order by wp.pct_change desc) as sector_rank
+       from with_prev wp
+       join company c on c.company_id = wp.company_id
+       join industry i on i.industry_id = c.industry_id
+       join sector s on s.sector_id = i.sector_id
+       join sector_avg sa on sa.sector_id = s.sector_id
+       where wp.pct_change > sa.avg_sector_change
+       order by wp.pct_change desc
+       limit coalesce($2::int, 10)`,
+      [tradingDate.value, limit.value],
+    );
+    if (rows.length === 0) return res.status(204).send();
+    return res.status(200).json(rows);
+  } catch (err) {
+    return dbError(res, err);
+  }
+}
+
+// ---------- Route 5 — GET /api/stocks/top-average-returns ----------
+// Window is ~30 calendar days (~21 trading days); the min_observations
+// floor (default 10) guards against short-history tickers.
+
+/**
+ * @openapi
+ * /stocks/top-average-returns:
+ *   get:
+ *     summary: Ranked average daily return leaderboard (~30d window)
+ *     description: >
+ *       Ranks tickers by mean daily return over the 30-calendar-day window
+ *       ending on `end_date` (or the latest trading day if omitted).
+ *       Tickers with fewer than `min_observations` valid days are excluded.
+ *     tags: [Stocks]
+ *     parameters:
+ *       - in: query
+ *         name: end_date
+ *         schema: { type: string, format: date }
+ *         description: Anchor date; defaults to latest trading day in the dataset.
+ *       - in: query
+ *         name: min_observations
+ *         schema: { type: integer, default: 10, minimum: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 5, minimum: 1 }
+ *     responses:
+ *       200:
+ *         description: Ranked tickers
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items: { $ref: '#/components/schemas/TopReturnRow' }
+ *       204: { description: No qualifying tickers }
+ *       500: { description: Database error }
+ */
+async function getTopAverageReturns(req, res) {
+  const endDate = parseDate(req.query.end_date);
+  if (!endDate.ok) return res.status(400).json({ error: 'end_date must be YYYY-MM-DD' });
+  const minObs = parsePositiveInt(req.query.min_observations, 10);
+  if (!minObs.ok) return res.status(422).json({ error: 'min_observations must be a positive integer' });
+  const limit = parsePositiveInt(req.query.limit, 5);
+  if (!limit.ok) return res.status(422).json({ error: 'limit must be a positive integer' });
+
+  try {
+    const { rows } = await pool.query(
+      `with anchor as (
+         select coalesce(
+           (select max(trading_date) from primary_price_daily
+            where trading_date <= coalesce($1::date, current_date)),
+           (select max(trading_date) from primary_price_daily)
+         ) as end_date
+       ),
+       daily_returns as (
+         select pp.company_id, pp.trading_date,
+                (pp.close / nullif(lag(pp.close) over (
+                  partition by pp.company_id order by pp.trading_date
+                ), 0) - 1) as daily_return
+         from primary_price_daily pp
+         cross join anchor a
+         where pp.trading_date between a.end_date - interval '30 days' and a.end_date
+       ),
+       return_stats as (
+         select company_id,
+                avg(daily_return) as avg_daily_return,
+                stddev_samp(daily_return) as return_volatility,
+                count(daily_return) as n_obs
+         from daily_returns
+         where daily_return is not null
+         group by company_id
+         having count(daily_return) >= coalesce($2::int, 10)
+       )
+       select
+         c.ticker, c.company_name,
+         i.industry_name, s.sector_name,
+         rs.avg_daily_return, rs.return_volatility, rs.n_obs,
+         rank() over (order by rs.avg_daily_return desc) as return_rank
+       from return_stats rs
+       join company c on c.company_id = rs.company_id
+       join industry i on i.industry_id = c.industry_id
+       join sector s on s.sector_id = i.sector_id
+       order by return_rank
+       limit coalesce($3::int, 5)`,
+      [endDate.value, minObs.value, limit.value],
+    );
+    if (rows.length === 0) return res.status(204).send();
+    return res.status(200).json(rows);
+  } catch (err) {
+    return dbError(res, err);
+  }
+}
+
+// ---------- Route 6 — GET /api/sectors/momentum ----------
+// return_7d is a 7 trading-day lag (~9 calendar).
+
+/**
+ * @openapi
+ * /sectors/momentum:
+ *   get:
+ *     summary: 7-trading-day momentum within each sector
+ *     description: >
+ *       Surfaces stocks whose 7-trading-day return beats their own sector
+ *       average. Ranked within each sector. Anchor defaults to the latest
+ *       trading day in the dataset.
+ *     tags: [Sectors]
+ *     parameters:
+ *       - in: query
+ *         name: as_of_date
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: sector_name
+ *         schema: { type: string }
+ *         description: Optional filter to a single sector.
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 200, minimum: 1 }
+ *     responses:
+ *       200:
+ *         description: Momentum leaders
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items: { $ref: '#/components/schemas/SectorMomentumRow' }
+ *       204: { description: No rows meet the filter }
+ *       400: { description: Malformed as_of_date }
+ *       500: { description: Database error }
+ */
+async function getSectorMomentum(req, res) {
+  const asOf = parseDate(req.query.as_of_date);
+  if (!asOf.ok) return res.status(400).json({ error: 'as_of_date must be YYYY-MM-DD' });
+  const sectorName = req.query.sector_name && String(req.query.sector_name).trim() !== ''
+    ? String(req.query.sector_name)
+    : null;
+  const limit = parsePositiveInt(req.query.limit, 200);
+  if (!limit.ok) return res.status(422).json({ error: 'limit must be a positive integer' });
+
+  try {
+    const { rows } = await pool.query(
+      `with anchor as (
+         select coalesce(
+           (select max(trading_date) from primary_price_daily
+            where trading_date <= coalesce($1::date, current_date)),
+           (select max(trading_date) from primary_price_daily)
+         ) as as_of_date
+       ),
+       all_series as (
+         select pp.company_id, pp.trading_date, pp.close,
+                lag(pp.close, 7) over (partition by pp.company_id order by pp.trading_date) as close_7d_ago
+         from primary_price_daily pp
+       ),
+       asof_returns as (
+         select s.company_id, a.as_of_date,
+                (s.close / nullif(s.close_7d_ago, 0) - 1) * 100 as return_7d
+         from all_series s
+         join anchor a on s.trading_date = a.as_of_date
+         where s.close_7d_ago is not null
+       ),
+       sector_avg as (
+         select i.sector_id, avg(ar.return_7d) as avg_sector_return
+         from asof_returns ar
+         join company c on c.company_id = ar.company_id
+         join industry i on i.industry_id = c.industry_id
+         group by i.sector_id
+       ),
+       ranked as (
+         select
+           c.ticker, c.company_name,
+           i.industry_name, se.sector_name,
+           ar.as_of_date, ar.return_7d,
+           sa.avg_sector_return,
+           rank() over (partition by se.sector_id order by ar.return_7d desc) as sector_rank
+         from asof_returns ar
+         join company c on c.company_id = ar.company_id
+         join industry i on i.industry_id = c.industry_id
+         join sector se on se.sector_id = i.sector_id
+         join sector_avg sa on sa.sector_id = se.sector_id
+         where ($2::text is null or se.sector_name = $2)
+       )
+       select ticker, company_name, industry_name, sector_name,
+              as_of_date, return_7d, avg_sector_return, sector_rank
+       from ranked
+       where return_7d > avg_sector_return
+       order by sector_name, sector_rank
+       limit coalesce($3::int, 200)`,
+      [asOf.value, sectorName, limit.value],
+    );
+    if (rows.length === 0) return res.status(204).send();
+    return res.status(200).json(rows);
+  } catch (err) {
+    return dbError(res, err);
+  }
+}
+
+// ---------- Route 7 — GET /api/companies/:ticker/news ----------
+
+/**
+ * @openapi
+ * /companies/{ticker}/news:
+ *   get:
+ *     summary: Recent news articles mentioning the ticker
+ *     tags: [Companies]
+ *     parameters:
+ *       - in: path
+ *         name: ticker
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: lookback_days
+ *         schema: { type: integer, default: 30, minimum: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 10, minimum: 1 }
+ *     responses:
+ *       200:
+ *         description: Article rows, newest first
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items: { $ref: '#/components/schemas/CompanyNewsRow' }
+ *       204: { description: No news in window }
+ *       500: { description: Database error }
+ */
+async function getCompanyNews(req, res) {
+  const ticker = String(req.params.ticker || '').trim();
   if (!ticker) return res.status(400).json({ error: 'ticker required' });
-  if (!start.ok || !end.ok) {
-    return res.status(400).json({ error: 'start_date and end_date (YYYY-MM-DD) required' });
-  }
-  if (!overlap.ok) {
-    return res.status(422).json({ error: 'min_overlap_days must be a positive integer' });
-  }
+  const lookback = parsePositiveInt(req.query.lookback_days, 30);
+  if (!lookback.ok) return res.status(422).json({ error: 'lookback_days must be a positive integer' });
+  const limit = parsePositiveInt(req.query.limit, 10);
+  if (!limit.ok) return res.status(422).json({ error: 'limit must be a positive integer' });
 
   try {
-    // Quick existence check so we can return 404 distinctly from "no
-    // peers with enough overlap" (204).
-    const existence = await pool.query(
-      `SELECT 1
-       FROM combined_stock_data_staging
-       WHERE symbol = $1 AND trade_date BETWEEN $2 AND $3
-       LIMIT 1`,
-      [ticker, start.value, end.value],
-    );
-    if (existence.rows.length === 0) {
-      return res.status(404).json({ error: 'ticker has no data in range' });
-    }
-
     const { rows } = await pool.query(
-      `WITH rets AS (
-         SELECT symbol, trade_date,
-                close / NULLIF(LAG(close) OVER (PARTITION BY symbol ORDER BY trade_date), 0) - 1 AS ret
-         FROM combined_stock_data_staging
-         WHERE trade_date BETWEEN $2 AND $3
+      `with target as (
+         select c.company_id, c.ticker, c.company_name,
+                i.industry_name, s.sector_name
+         from company c
+         left join industry i on i.industry_id = c.industry_id
+         left join sector s on s.sector_id = i.sector_id
+         where c.ticker = upper(trim($1))
        ),
-       clean AS (
-         -- Outlier clip on both sides (see /stocks/risk-adjusted note).
-         SELECT symbol, trade_date, ret
-         FROM rets
-         WHERE ret IS NOT NULL AND ABS(ret) <= $5
-       ),
-       target AS (SELECT trade_date, ret FROM clean WHERE symbol = $1),
-       others AS (SELECT symbol, trade_date, ret FROM clean WHERE symbol <> $1)
-       SELECT o.symbol AS ticker,
-              COUNT(*)           AS n_overlap,
-              CORR(t.ret, o.ret) AS corr_ret
-       FROM target t JOIN others o USING (trade_date)
-       GROUP BY o.symbol
-       HAVING COUNT(*) >= $4
-       ORDER BY corr_ret DESC NULLS LAST
-       LIMIT 20`,
-      [ticker, start.value, end.value, overlap.value, RET_OUTLIER_CLIP],
+       mention_stats as (
+         select am.company_id,
+                count(distinct na.article_id) filter (
+                  where na.published_at >= current_timestamp
+                        - (coalesce($2::int, 30) * interval '1 day')
+                ) as articles_in_window
+         from article_mention am
+         join news_article na on na.article_id = am.article_id
+         group by am.company_id
+       )
+       select
+         t.company_name, t.ticker, t.sector_name, t.industry_name,
+         na.source, na.published_at, na.title, na.summary, na.url,
+         na.lm_level, na.lm_score1, na.lm_score2, na.lm_sentiment,
+         am.mention_confidence,
+         ms.articles_in_window,
+         rank() over (
+           partition by t.company_id
+           order by na.published_at desc, na.article_id desc
+         ) as recency_rank
+       from target t
+       join article_mention am on am.company_id = t.company_id
+       join news_article na on na.article_id = am.article_id
+       left join mention_stats ms on ms.company_id = t.company_id
+       where na.published_at >= current_timestamp
+             - (coalesce($2::int, 30) * interval '1 day')
+       order by na.published_at desc, na.article_id desc
+       limit coalesce($3::int, 10)`,
+      [ticker, lookback.value, limit.value],
     );
-
     if (rows.length === 0) return res.status(204).send();
     return res.status(200).json(rows);
   } catch (err) {
@@ -228,110 +755,81 @@ async function getSimilarCompanies(req, res) {
   }
 }
 
-// --- Investable-universe constants (same ones used by /similar) ---
-//
-// PENNY_MIN_AVG_CLOSE ($5): standard CRSP / Fama-French (1993) screen —
-//   exclude stocks whose average close in the window is under $5. On
-//   sub-penny tickers, the tick-size quantization ($0.0001) dominates
-//   real price movement, producing spurious 100%+ daily returns that
-//   aren't tradable. The Phase 1 dataset has thousands of these.
-//
-// RET_OUTLIER_CLIP (0.5 = 50%): drop days where |daily return| > 50%.
-//   Real equities almost never move 50% in a day except on unadjusted
-//   stock splits, reverse splits, or data errors. This is the standard
-//   "drop > X%" filter used in e.g. Ivković-Sialm-Weisbenner (2008) and
-//   most retail-grade equity screens. We clip rather than winsorize
-//   because this is a Sharpe-style ranking, not a distribution fit.
-//
-// MIN_DAYS_FLOOR (20): absolute minimum samples for stddev to mean
-//   anything — no matter how short the window.
-//
-// MIN_COVERAGE (0.5 = 50%): the ticker must have clean returns on at
-//   least half the business days in the window. The raw CSV has
-//   tickers whose series "resets" monthly (big gaps with spurious
-//   in-range moves between them) — without a coverage requirement,
-//   those tickers dominate the ranking. ~252 trading days/year means
-//   a full-year query demands ~130 clean days of data.
-const PENNY_MIN_AVG_CLOSE = 5;
-const RET_OUTLIER_CLIP = 0.5;
-const MIN_DAYS_FLOOR = 20;
-const MIN_COVERAGE = 0.5;
+// ---------- Route 8 — GET /api/news/trending ----------
 
 /**
- * GET /stocks/risk-adjusted?start_date&end_date&top_n
- *
- * Ranks tickers by a Sharpe-style score with risk-free rate = 0:
- *   score = E[r_t] / σ(r_t)
- * where r_t is the simple daily return close_t / close_{t-1} - 1.
- *
- * This is an Information-Ratio / Sharpe (r_f = 0) style metric; see
- * Sharpe (1966, 1994). Annualization (×√252) is a pure constant and
- * doesn't change the ordering so we skip it.
- *
- * Filters applied before the stats CTE:
- *   * Investable universe (avg close >= $5) — drops sub-penny tickers.
- *   * Outlier clip (|ret| <= 0.5) — drops unadjusted splits/delistings.
+ * @openapi
+ * /news/trending:
+ *   get:
+ *     summary: Tickers with unusually high news-mention counts vs sector avg
+ *     tags: [News]
+ *     parameters:
+ *       - in: query
+ *         name: lookback_days
+ *         schema: { type: integer, default: 30, minimum: 1 }
+ *       - in: query
+ *         name: min_articles
+ *         schema: { type: integer, default: 5, minimum: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 10, minimum: 1 }
+ *     responses:
+ *       200:
+ *         description: Trending tickers ordered by article_count desc
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items: { $ref: '#/components/schemas/TrendingNewsRow' }
+ *       204: { description: No trending rows }
+ *       500: { description: Database error }
  */
-async function getRiskAdjusted(req, res) {
-  const start = parseDate(req.query.start_date);
-  const end = parseDate(req.query.end_date);
-  const topN = parsePositiveInt(req.query.top_n, 5);
-
-  if (!start.ok || !end.ok) {
-    return res.status(400).json({ error: 'start_date and end_date (YYYY-MM-DD) required' });
-  }
-  if (!topN.ok) {
-    return res.status(422).json({ error: 'top_n must be a positive integer' });
-  }
-
-  // Coverage floor scales with window length: 50% of business days
-  // in the window, with an absolute floor of MIN_DAYS_FLOOR so short
-  // windows don't set an impossibly-low bar.
-  const windowDays = (new Date(end.value) - new Date(start.value)) / 86400000;
-  const coverageFloor = Math.max(
-    MIN_DAYS_FLOOR,
-    Math.floor(MIN_COVERAGE * windowDays * (5 / 7)),
-  );
+async function getTrendingNews(req, res) {
+  const lookback = parsePositiveInt(req.query.lookback_days, 30);
+  if (!lookback.ok) return res.status(422).json({ error: 'lookback_days must be a positive integer' });
+  const minArticles = parsePositiveInt(req.query.min_articles, 5);
+  if (!minArticles.ok) return res.status(422).json({ error: 'min_articles must be a positive integer' });
+  const limit = parsePositiveInt(req.query.limit, 10);
+  if (!limit.ok) return res.status(422).json({ error: 'limit must be a positive integer' });
 
   try {
     const { rows } = await pool.query(
-      `WITH prices AS (
-         SELECT symbol, trade_date, close
-         FROM combined_stock_data_staging
-         WHERE trade_date BETWEEN $1 AND $2
+      `with windowed_mentions as (
+         select am.company_id, na.article_id
+         from article_mention am
+         join news_article na on na.article_id = am.article_id
+         where na.published_at >= current_timestamp
+               - (coalesce($1::int, 30) * interval '1 day')
        ),
-       universe AS (
-         SELECT symbol
-         FROM prices
-         GROUP BY symbol
-         HAVING AVG(close) >= $4
+       mention_counts as (
+         select company_id, count(distinct article_id) as article_count
+         from windowed_mentions
+         group by company_id
        ),
-       rets AS (
-         SELECT p.symbol,
-                p.close / NULLIF(LAG(p.close) OVER (PARTITION BY p.symbol ORDER BY p.trade_date), 0) - 1 AS ret
-         FROM prices p
-         JOIN universe u USING (symbol)
-       ),
-       stats AS (
-         SELECT symbol,
-                AVG(ret)         AS avg_daily_ret,
-                STDDEV_SAMP(ret) AS vol_daily_ret,
-                COUNT(ret)       AS n_days
-         FROM rets
-         WHERE ret IS NOT NULL AND ABS(ret) <= $5
-         GROUP BY symbol
-         HAVING COUNT(ret) >= $6 AND STDDEV_SAMP(ret) > 0
+       sector_avg as (
+         select i.sector_id, avg(mc.article_count) as avg_sector_mentions
+         from mention_counts mc
+         join company c on c.company_id = mc.company_id
+         join industry i on i.industry_id = c.industry_id
+         group by i.sector_id
        )
-       SELECT symbol AS ticker,
-              avg_daily_ret, vol_daily_ret, n_days,
-              avg_daily_ret / vol_daily_ret AS risk_adj_score,
-              ROW_NUMBER() OVER (ORDER BY avg_daily_ret / vol_daily_ret DESC) AS rn
-       FROM stats
-       ORDER BY risk_adj_score DESC
-       LIMIT $3`,
-      [start.value, end.value, topN.value, PENNY_MIN_AVG_CLOSE, RET_OUTLIER_CLIP, coverageFloor],
+       select
+         c.ticker, c.company_name,
+         s.sector_name, i.industry_name,
+         mc.article_count,
+         sa.avg_sector_mentions,
+         rank() over (partition by s.sector_id order by mc.article_count desc) as sector_rank
+       from mention_counts mc
+       join company c on c.company_id = mc.company_id
+       join industry i on i.industry_id = c.industry_id
+       join sector s on s.sector_id = i.sector_id
+       join sector_avg sa on sa.sector_id = s.sector_id
+       where mc.article_count >= coalesce($2::int, 5)
+         and mc.article_count > sa.avg_sector_mentions
+       order by mc.article_count desc
+       limit coalesce($3::int, 10)`,
+      [lookback.value, minArticles.value, limit.value],
     );
-
     if (rows.length === 0) return res.status(204).send();
     return res.status(200).json(rows);
   } catch (err) {
@@ -339,88 +837,92 @@ async function getRiskAdjusted(req, res) {
   }
 }
 
-// parsePositiveFloat — like parsePositiveInt but permits decimals,
-// used for z_threshold on the volume-spikes endpoint.
-function parsePositiveFloat(raw, fallback) {
-  if (raw === undefined) return { ok: true, value: fallback };
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n <= 0) return { ok: false };
-  return { ok: true, value: n };
-}
-
-// --- Volume spike constants ---
-//
-// LIQUIDITY_MIN_ROLLING_AVG_VOL (100k shares): rolling 60-day average
-//   volume must reach this bar for a day to be eligible. Anomaly-
-//   detection on thinly-traded tickers (e.g. 60 shares/day rolling
-//   average, then one day with 5,000) produces z-scores in the hundreds
-//   that aren't meaningful. 100k is a common investable-universe floor
-//   (Fleming & Remolona, 1999; standard quant screens).
-//
-// Z_SCORE_CAP (10): cap per-day z-scores before averaging. Without the
-//   cap, a day where rolling stddev happens to be near-zero can produce
-//   z > 1000 and dominate the per-ticker average. 10 is far beyond any
-//   meaningful "unusual volume" signal (4 stdevs is already ~0.003% of
-//   a normal distribution).
-const LIQUIDITY_MIN_ROLLING_AVG_VOL = 100000;
-const Z_SCORE_CAP = 10;
+// ---------- Route 9 — GET /api/prices/source-disagreement ----------
+// Uses raw price_daily (not primary_price_daily) on purpose — we want to
+// compare sources, and primary_price_daily picks only the highest-priority
+// source per (company, date).
 
 /**
- * GET /stocks/volume-spikes?start_date&end_date&z_threshold
- *
- * Per-ticker count of trading days where volume's rolling 60-day
- * z-score >= threshold. Standard volume-anomaly z-score:
- *   z_t = (v_t - μ_60(v)) / σ_60(v)
- * over a trailing 60-trading-day window that excludes the current day
- * (so "today's" volume can't pollute its own baseline).
- *
- * Filters:
- *   * μ_60 >= 100k shares — liquidity floor; see above.
- *   * Per-day z capped at 10 before averaging; see above.
+ * @openapi
+ * /prices/source-disagreement:
+ *   get:
+ *     summary: Days where different price feeds reported different closes
+ *     description: Intentionally uses raw price_daily so multiple sources per day are preserved.
+ *     tags: [Prices]
+ *     parameters:
+ *       - in: query
+ *         name: start_date
+ *         required: true
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: end_date
+ *         required: true
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: min_sources
+ *         schema: { type: integer, default: 2, minimum: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 50, minimum: 1 }
+ *     responses:
+ *       200:
+ *         description: Worst disagreement day per ticker in the window
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items: { $ref: '#/components/schemas/SourceDisagreementRow' }
+ *       204: { description: No disagreements in window }
+ *       400: { description: Dates missing or malformed }
+ *       500: { description: Database error }
  */
-async function getVolumeSpikes(req, res) {
-  const start = parseDate(req.query.start_date);
-  const end = parseDate(req.query.end_date);
-  const z = parsePositiveFloat(req.query.z_threshold, 2.0);
-
+async function getSourceDisagreement(req, res) {
+  const start = parseRequiredDate(req.query.start_date);
+  const end = parseRequiredDate(req.query.end_date);
   if (!start.ok || !end.ok) {
     return res.status(400).json({ error: 'start_date and end_date (YYYY-MM-DD) required' });
   }
-  if (!z.ok) {
-    return res.status(422).json({ error: 'z_threshold must be a positive number' });
-  }
+  const minSources = parsePositiveInt(req.query.min_sources, 2);
+  if (!minSources.ok) return res.status(422).json({ error: 'min_sources must be a positive integer' });
+  const limit = parsePositiveInt(req.query.limit, 50);
+  if (!limit.ok) return res.status(422).json({ error: 'limit must be a positive integer' });
 
   try {
     const { rows } = await pool.query(
-      `WITH rolling AS (
-         SELECT symbol, trade_date, volume,
-                AVG(volume) OVER w         AS avg60,
-                STDDEV_SAMP(volume) OVER w AS std60
-         FROM combined_stock_data_staging
-         WHERE trade_date BETWEEN ($1::date - INTERVAL '120 days') AND $2::date
-         WINDOW w AS (PARTITION BY symbol ORDER BY trade_date
-                      ROWS BETWEEN 60 PRECEDING AND 1 PRECEDING)
+      `with spans as (
+         select pd.company_id, pd.trading_date,
+                count(*) as n_sources,
+                min(pd.close) as min_close,
+                max(pd.close) as max_close,
+                max(pd.close) - min(pd.close) as close_spread,
+                ((max(pd.close) - min(pd.close)) / nullif(avg(pd.close), 0)) * 100 as pct_spread
+         from price_daily pd
+         where pd.trading_date between $1::date and $2::date
+           and pd.close is not null
+         group by pd.company_id, pd.trading_date
+         having count(*) >= coalesce($3::int, 2)
        ),
-       z AS (
-         SELECT symbol, trade_date,
-                (volume - avg60) / NULLIF(std60, 0) AS zscore
-         FROM rolling
-         WHERE avg60 >= $4  -- liquidity floor
+       ranked as (
+         select c.ticker, c.company_name,
+                s.trading_date, s.n_sources,
+                s.min_close, s.max_close, s.close_spread, s.pct_spread,
+                row_number() over (
+                  partition by s.company_id
+                  order by s.pct_spread desc nulls last,
+                           s.close_spread desc nulls last,
+                           s.trading_date desc
+                ) as rn
+         from spans s
+         join company c on c.company_id = s.company_id
        )
-       SELECT symbol AS ticker,
-              COUNT(*)                     AS spike_days,
-              AVG(LEAST(zscore, $5::numeric)) AS avg_zscore
-       FROM z
-       WHERE trade_date BETWEEN $1 AND $2 AND zscore >= $3
-       GROUP BY symbol
-       -- Spike COUNT is the primary signal ("how unusual was this ticker's
-       -- volume activity?"). Without this, the cap flattens the top and
-       -- the ordering becomes alphabetical-ish noise.
-       ORDER BY spike_days DESC, avg_zscore DESC
-       LIMIT 50`,
-      [start.value, end.value, z.value, LIQUIDITY_MIN_ROLLING_AVG_VOL, Z_SCORE_CAP],
+       select ticker, company_name, trading_date,
+              n_sources, min_close, max_close, close_spread, pct_spread
+       from ranked
+       where rn = 1
+       order by pct_spread desc nulls last, close_spread desc nulls last
+       limit coalesce($4::int, 50)`,
+      [start.value, end.value, minSources.value, limit.value],
     );
-
     if (rows.length === 0) return res.status(204).send();
     return res.status(200).json(rows);
   } catch (err) {
@@ -428,47 +930,251 @@ async function getVolumeSpikes(req, res) {
   }
 }
 
-// Factory: builds a handler that always responds 501 with the
-// { phase, reason } envelope the UI's ComingSoonCard expects.
-// Two kinds of stubs:
-//   * phase 2 — unlocks once `news_article` lands.
-//   * phase "later" — needs industry/sector/multi-source tables from
-//     the broader Chen diagram, out of scope for this doc.
-function makeStub(phase, reason) {
-  return (_req, res) => res.status(501).json({ phase, reason });
+// ---------- Route 10 — GET /api/industries/rotations ----------
+// Guards `ln(1 + ret)` against ret <= -1 (stock drops ≥100% in a day).
+
+/**
+ * @openapi
+ * /industries/rotations:
+ *   get:
+ *     summary: Month-over-month rank shifts of industries within their sector
+ *     description: >
+ *       Per-industry monthly return = geometric mean of constituent tickers'
+ *       compounded daily returns. Ranked within each sector, then compared
+ *       against the previous month to surface the largest rotations.
+ *     tags: [Industries]
+ *     parameters:
+ *       - in: query
+ *         name: start_date
+ *         required: true
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: end_date
+ *         required: true
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 50, minimum: 1 }
+ *     responses:
+ *       200:
+ *         description: Top rotations ordered by |Δ rank| desc
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items: { $ref: '#/components/schemas/IndustryRotationRow' }
+ *       204: { description: No rotations detected }
+ *       400: { description: Dates missing or malformed }
+ *       500: { description: Database error }
+ */
+async function getIndustryRotations(req, res) {
+  const start = parseRequiredDate(req.query.start_date);
+  const end = parseRequiredDate(req.query.end_date);
+  if (!start.ok || !end.ok) {
+    return res.status(400).json({ error: 'start_date and end_date (YYYY-MM-DD) required' });
+  }
+  const limit = parsePositiveInt(req.query.limit, 50);
+  if (!limit.ok) return res.status(422).json({ error: 'limit must be a positive integer' });
+
+  try {
+    const { rows } = await pool.query(
+      `with daily_returns as (
+         select pp.company_id, pp.trading_date,
+                (pp.close / nullif(lag(pp.close) over (
+                  partition by pp.company_id order by pp.trading_date
+                ), 0) - 1) as ret
+         from primary_price_daily pp
+         where pp.trading_date between $1::date and $2::date
+       ),
+       company_month as (
+         select dr.company_id,
+                date_trunc('month', dr.trading_date)::date as month,
+                exp(sum(ln(greatest(1 + dr.ret, 1e-9)))) - 1 as month_ret
+         from daily_returns dr
+         where dr.ret is not null and dr.ret > -0.999
+         group by dr.company_id, date_trunc('month', dr.trading_date)::date
+       ),
+       industry_month as (
+         select s.sector_name, i.industry_name, cm.month,
+                avg(cm.month_ret) as industry_month_ret
+         from company_month cm
+         join company c on c.company_id = cm.company_id
+         join industry i on i.industry_id = c.industry_id
+         join sector s on s.sector_id = i.sector_id
+         group by s.sector_name, i.industry_name, cm.month
+       ),
+       ranked as (
+         select *,
+                rank() over (partition by sector_name, month order by industry_month_ret desc) as rnk
+         from industry_month
+       ),
+       deltas as (
+         select sector_name, industry_name, month,
+                industry_month_ret, rnk,
+                lag(rnk) over (partition by sector_name, industry_name order by month) as prev_rnk
+         from ranked
+       )
+       select sector_name, industry_name, month,
+              prev_rnk, rnk, (prev_rnk - rnk) as rank_improvement,
+              industry_month_ret
+       from deltas
+       where prev_rnk is not null
+       order by abs(prev_rnk - rnk) desc, month desc
+       limit coalesce($3::int, 50)`,
+      [start.value, end.value, limit.value],
+    );
+    if (rows.length === 0) return res.status(204).send();
+    return res.status(200).json(rows);
+  } catch (err) {
+    return dbError(res, err);
+  }
 }
 
-const stubs = {
-  industriesLeaderboard: makeStub(
-    'later',
-    'Requires tables not yet populated: company, industry, sector',
-  ),
-  industriesRotation: makeStub(
-    'later',
-    'Requires tables not yet populated: company, industry, sector',
-  ),
-  stocksSourceDisagreement: makeStub(
-    'later',
-    'Requires multi-source price tables not yet populated',
-  ),
-  newsSourceImpact: makeStub(
-    2,
-    'Requires tables not yet populated: news_article, article_mention',
-  ),
-  newsReturnCorrelation: makeStub(
-    2,
-    'Requires tables not yet populated: news_article, article_mention',
-  ),
-};
+// ---------- Helper — GET /api/sectors ----------
+
+/**
+ * @openapi
+ * /sectors:
+ *   get:
+ *     summary: List all sectors
+ *     tags: [Sectors]
+ *     responses:
+ *       200:
+ *         description: Sectors sorted by name
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items: { $ref: '#/components/schemas/Sector' }
+ *       204: { description: No sectors }
+ *       500: { description: Database error }
+ */
+async function listSectors(_req, res) {
+  try {
+    const { rows } = await pool.query(
+      `select sector_id, sector_name from sector order by sector_name`,
+    );
+    if (rows.length === 0) return res.status(204).send();
+    return res.status(200).json(rows);
+  } catch (err) {
+    return dbError(res, err);
+  }
+}
+
+// ---------- Helper — GET /api/sectors/:sector/companies ----------
+
+/**
+ * @openapi
+ * /sectors/{sector}/companies:
+ *   get:
+ *     summary: Companies in a sector
+ *     tags: [Sectors]
+ *     parameters:
+ *       - in: path
+ *         name: sector
+ *         required: true
+ *         schema: { type: string }
+ *         description: Sector name, matched exactly (trimmed).
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 500, minimum: 1 }
+ *     responses:
+ *       200:
+ *         description: Company rows ordered by ticker
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items: { $ref: '#/components/schemas/CompanyListing' }
+ *       204: { description: No companies in that sector }
+ *       500: { description: Database error }
+ */
+async function listSectorCompanies(req, res) {
+  const sectorName = String(req.params.sector || '').trim();
+  if (!sectorName) return res.status(400).json({ error: 'sector required' });
+  const limit = parsePositiveInt(req.query.limit, 500);
+  if (!limit.ok) return res.status(422).json({ error: 'limit must be a positive integer' });
+
+  try {
+    const { rows } = await pool.query(
+      `select c.company_id, c.ticker, c.company_name,
+              i.industry_name, s.sector_name
+       from company c
+       join industry i on i.industry_id = c.industry_id
+       join sector s on s.sector_id = i.sector_id
+       where s.sector_name = trim($1)
+       order by c.ticker
+       limit coalesce($2::int, 500)`,
+      [sectorName, limit.value],
+    );
+    if (rows.length === 0) return res.status(204).send();
+    return res.status(200).json(rows);
+  } catch (err) {
+    return dbError(res, err);
+  }
+}
+
+// ---------- Helper — GET /api/companies ----------
+
+/**
+ * @openapi
+ * /companies:
+ *   get:
+ *     summary: List all companies
+ *     tags: [Companies]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 200, minimum: 1 }
+ *     responses:
+ *       200:
+ *         description: Companies ordered by ticker
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items: { $ref: '#/components/schemas/CompanyListing' }
+ *       204: { description: No companies }
+ *       500: { description: Database error }
+ */
+async function listCompanies(req, res) {
+  const limit = parsePositiveInt(req.query.limit, 200);
+  if (!limit.ok) return res.status(422).json({ error: 'limit must be a positive integer' });
+
+  try {
+    const { rows } = await pool.query(
+      `select c.company_id, c.ticker, c.company_name,
+              i.industry_name, s.sector_name
+       from company c
+       left join industry i on i.industry_id = c.industry_id
+       left join sector s on s.sector_id = i.sector_id
+       order by c.ticker
+       limit coalesce($1::int, 200)`,
+      [limit.value],
+    );
+    if (rows.length === 0) return res.status(204).send();
+    return res.status(200).json(rows);
+  } catch (err) {
+    return dbError(res, err);
+  }
+}
 
 module.exports = {
   initRoutes,
   health,
+  // 10 core routes
   searchCompanies,
   getCompany,
-  getStockHistory,
-  getSimilarCompanies,
-  getRiskAdjusted,
-  getVolumeSpikes,
-  stubs,
+  getCompanyPrices,
+  getTopGainers,
+  getTopAverageReturns,
+  getSectorMomentum,
+  getCompanyNews,
+  getTrendingNews,
+  getSourceDisagreement,
+  getIndustryRotations,
+  // 3 helpers
+  listSectors,
+  listSectorCompanies,
+  listCompanies,
 };

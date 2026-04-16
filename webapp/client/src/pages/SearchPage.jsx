@@ -1,13 +1,6 @@
-// Search page — type a prefix, see a list of matching tickers, click
-// one to go to its detail page.
-//
-// Design choices worth reading once:
-//   * Input is controlled (UI rules §Forms). Every keystroke triggers
-//     a debounced call through the api seam so we don't spam the DB.
-//   * `requestId` tracking guards against an older response landing
-//     after a newer one — classic race when the user types fast.
-//   * `status` is a single union-like string so the view code never
-//     has to juggle "loading AND results" or "error BUT empty".
+// Search page — type a prefix (ticker or company name), see matching
+// companies, click one to go to its detail page. Uses SoT Route 1 which
+// returns { ticker, company_name, industry_name, sector_name }.
 
 import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
@@ -18,7 +11,6 @@ import {
   List,
   ListItem,
   ListItemButton,
-  ListItemText,
   CircularProgress,
   Alert,
   Box,
@@ -31,7 +23,7 @@ const DEBOUNCE_MS = 200;
 export default function SearchPage() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
-  const [status, setStatus] = useState('idle'); // idle | loading | ok | empty | error
+  const [status, setStatus] = useState('idle');
   const lastRequestId = useRef(0);
 
   useEffect(() => {
@@ -49,7 +41,7 @@ export default function SearchPage() {
     const timer = setTimeout(async () => {
       try {
         const { data, status: httpStatus } = await api.searchCompanies(trimmed);
-        if (id !== lastRequestId.current) return; // stale response
+        if (id !== lastRequestId.current) return;
         if (httpStatus === 204 || data.length === 0) {
           setResults([]);
           setStatus('empty');
@@ -76,8 +68,8 @@ export default function SearchPage() {
         autoFocus
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        label="Ticker prefix"
-        placeholder="e.g. AA"
+        label="Ticker or company"
+        placeholder="e.g. AAPL or Apple"
         inputProps={{ 'aria-label': 'Search tickers', role: 'searchbox' }}
         sx={{ mb: 3 }}
       />
@@ -89,7 +81,7 @@ export default function SearchPage() {
 
 function ResultBlock({ status, results }) {
   if (status === 'idle') {
-    return <Typography color="text.secondary">Start typing a ticker prefix.</Typography>;
+    return <Typography color="text.secondary">Start typing a ticker or company name.</Typography>;
   }
   if (status === 'loading') {
     return (
@@ -103,14 +95,28 @@ function ResultBlock({ status, results }) {
     return <Alert severity="error">Couldn't reach the search service.</Alert>;
   }
   if (status === 'empty') {
-    return <Typography color="text.secondary">No tickers match.</Typography>;
+    return <Typography color="text.secondary">No matches.</Typography>;
   }
   return (
     <List aria-label="Search results">
       {results.map((row) => (
         <ListItem key={row.ticker} disablePadding>
           <ListItemButton component={Link} to={`/stocks/${row.ticker}`}>
-            <ListItemText primary={row.ticker} />
+            <Box>
+              <Typography component="span" sx={{ fontWeight: 600 }}>
+                ${row.ticker}
+              </Typography>
+              {row.company_name && (
+                <Typography component="span" sx={{ color: 'text.primary', ml: 1 }}>
+                  — {row.company_name}
+                </Typography>
+              )}
+              {(row.industry_name || row.sector_name) && (
+                <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
+                  {[row.industry_name, row.sector_name].filter(Boolean).join(' · ')}
+                </Typography>
+              )}
+            </Box>
           </ListItemButton>
         </ListItem>
       ))}

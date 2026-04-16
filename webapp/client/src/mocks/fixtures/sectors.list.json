@@ -1,0 +1,14 @@
+[
+  { "sector_id": 1, "sector_name": "Communication Services" },
+  { "sector_id": 2, "sector_name": "Consumer Discretionary" },
+  { "sector_id": 3, "sector_name": "Consumer Staples" },
+  { "sector_id": 4, "sector_name": "Energy" },
+  { "sector_id": 5, "sector_name": "Financials" },
+  { "sector_id": 6, "sector_name": "Health Care" },
+  { "sector_id": 7, "sector_name": "Industrials" },
+  { "sector_id": 8, "sector_name": "Information Technology" },
+  { "sector_id": 9, "sector_name": "Materials" },
+  { "sector_id": 10, "sector_name": "Real Estate" },
+  { "sector_id": 11, "sector_name": "Technology" },
+  { "sector_id": 12, "sector_name": "Utilities" }
+]

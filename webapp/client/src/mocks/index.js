@@ -1,20 +1,23 @@
 // mocks/index.js
 //
-// In-memory implementation of the same contract `services/api.real.js`
-// exposes. Every method returns a Promise that resolves after a small
-// artificial delay so `useEffect` loading states render realistically
-// in the browser.
+// In-memory implementation matching the contract in services/api.real.js.
+// Every method returns a Promise resolving after a small artificial delay
+// so `useEffect` loading states render realistically in the browser.
 //
-// Shapes here MUST match the real API's response. Drift is caught by
-// the contract test in `__tests__/services/api.contract.test.js`.
+// Shapes here MUST match the real API's response. Drift is caught by the
+// contract test in `__tests__/services/api.contract.test.js`.
 
 import companiesSearch from './fixtures/companies.search.json';
 import companiesProfile from './fixtures/companies.profile.json';
-import stocksHistory from './fixtures/stocks.history.json';
-import stocksRiskAdjusted from './fixtures/stocks.risk-adjusted.json';
-import stocksVolumeSpikes from './fixtures/stocks.volume-spikes.json';
-import companiesSimilar from './fixtures/companies.similar.json';
-import { stub501 } from './stubs';
+import companiesPrices from './fixtures/companies.prices.json';
+import companiesNews from './fixtures/companies.news.json';
+import topGainers from './fixtures/stocks.top-gainers.json';
+import topAverageReturns from './fixtures/stocks.top-average-returns.json';
+import sectorsMomentum from './fixtures/sectors.momentum.json';
+import newsTrending from './fixtures/news.trending.json';
+import pricesSourceDisagreement from './fixtures/prices.source-disagreement.json';
+import industriesRotations from './fixtures/industries.rotations.json';
+import sectorsList from './fixtures/sectors.list.json';
 
 const DELAY_MS = 150;
 
@@ -33,43 +36,81 @@ const notFound = async () => {
 };
 
 const api = {
-  searchCompanies: (q, limit = 50) => {
-    if (!q) return ok([], 200);
-    const prefix = String(q).toUpperCase();
+  // Route 1
+  searchCompanies: (q, limit = 20) => {
+    if (!q) return empty();
+    const prefix = String(q).toUpperCase().trim();
+    const byName = String(q).toLowerCase().trim();
     const matches = companiesSearch
-      .filter((row) => row.ticker.startsWith(prefix))
+      .filter(
+        (row) =>
+          row.ticker.startsWith(prefix) ||
+          (row.company_name && row.company_name.toLowerCase().startsWith(byName)),
+      )
       .slice(0, limit);
     return matches.length ? ok(matches) : empty();
   },
 
+  // Route 2
   getCompany: (ticker) => {
     const profile = companiesProfile[String(ticker).toUpperCase()];
     return profile ? ok(profile) : notFound();
   },
 
-  getStockHistory: (ticker /* , startDate, endDate */) => {
-    const series = stocksHistory[String(ticker).toUpperCase()];
+  // Route 3
+  getCompanyPrices: (ticker /* , startDate, endDate */) => {
+    const series = companiesPrices[String(ticker).toUpperCase()];
     if (!series) return notFound();
     return series.length ? ok(series) : empty();
   },
 
-  getSimilarCompanies: (ticker /* , startDate, endDate, minOverlapDays */) => {
-    const rows = companiesSimilar[String(ticker).toUpperCase()];
+  // Route 4
+  getTopGainers: (_tradingDate, limit = 10) =>
+    ok(topGainers.slice(0, limit)),
+
+  // Route 5
+  getTopAverageReturns: (_endDate, _minObservations = 10, limit = 5) =>
+    ok(topAverageReturns.slice(0, limit)),
+
+  // Route 6
+  getSectorMomentum: (_asOfDate, sectorName, limit = 200) => {
+    const filtered = sectorName
+      ? sectorsMomentum.filter((r) => r.sector_name === sectorName)
+      : sectorsMomentum;
+    return ok(filtered.slice(0, limit));
+  },
+
+  // Route 7
+  getCompanyNews: (ticker /* , lookbackDays, limit */) => {
+    const rows = companiesNews[String(ticker).toUpperCase()];
     if (!rows) return notFound();
     return rows.length ? ok(rows) : empty();
   },
 
-  getRiskAdjusted: (_startDate, _endDate, topN = 5) =>
-    ok(stocksRiskAdjusted.slice(0, topN)),
+  // Route 8
+  getTrendingNews: (_lookbackDays = 30, _minArticles = 5, limit = 10) =>
+    ok(newsTrending.slice(0, limit)),
 
-  getVolumeSpikes: (_startDate, _endDate /* , zThreshold */) =>
-    ok(stocksVolumeSpikes),
+  // Route 9
+  getSourceDisagreement: (_startDate, _endDate, _minSources = 2, limit = 50) =>
+    ok(pricesSourceDisagreement.slice(0, limit)),
 
-  getNewsSourceImpact: () =>
-    stub501(2, 'Requires tables not yet populated: news_article, article_mention'),
+  // Route 10
+  getIndustryRotations: (_startDate, _endDate, limit = 50) =>
+    ok(industriesRotations.slice(0, limit)),
 
-  getNewsReturnCorrelation: () =>
-    stub501(2, 'Requires tables not yet populated: news_article, article_mention'),
+  // Helpers
+  getSectors: () => ok(sectorsList),
+
+  getSectorCompanies: (sectorName, limit = 500) => {
+    const matches = companiesSearch
+      .filter((row) => row.sector_name === sectorName)
+      .slice(0, limit);
+    return matches.length ? ok(matches) : empty();
+  },
+
+  listCompanies: (limit = 200) =>
+    ok(companiesSearch.slice(0, limit)),
 };
 
 export default api;

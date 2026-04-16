@@ -10,7 +10,7 @@ import { render, screen } from '@testing-library/react';
 jest.mock('../services/api', () => ({
   __esModule: true,
   api: {
-    getRiskAdjusted: () => Promise.resolve({ data: [], status: 204 }),
+    getTopAverageReturns: () => Promise.resolve({ data: [], status: 204 }),
   },
 }));
 
