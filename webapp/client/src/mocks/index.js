@@ -1,11 +1,5 @@
-// mocks/index.js
-//
-// In-memory implementation matching the contract in services/api.real.js.
-// Every method returns a Promise resolving after a small artificial delay
-// so `useEffect` loading states render realistically in the browser.
-//
-// Shapes here MUST match the real API's response. Drift is caught by the
-// contract test in `__tests__/services/api.contract.test.js`.
+// in-memory mock matching services/api.real.js. shapes must match
+// the real api; drift is caught by the contract test
 
 import companiesSearch from './fixtures/companies.search.json';
 import companiesProfile from './fixtures/companies.profile.json';
@@ -36,7 +30,6 @@ const notFound = async () => {
 };
 
 const api = {
-  // Route 1
   searchCompanies: (q, limit = 20) => {
     if (!q) return empty();
     const prefix = String(q).toUpperCase().trim();
@@ -51,28 +44,23 @@ const api = {
     return matches.length ? ok(matches) : empty();
   },
 
-  // Route 2
   getCompany: (ticker) => {
     const profile = companiesProfile[String(ticker).toUpperCase()];
     return profile ? ok(profile) : notFound();
   },
 
-  // Route 3
   getCompanyPrices: (ticker /* , startDate, endDate */) => {
     const series = companiesPrices[String(ticker).toUpperCase()];
     if (!series) return notFound();
     return series.length ? ok(series) : empty();
   },
 
-  // Route 4
   getTopGainers: (_tradingDate, limit = 10) =>
     ok(topGainers.slice(0, limit)),
 
-  // Route 5
   getTopAverageReturns: (_endDate, _minObservations = 10, limit = 5) =>
     ok(topAverageReturns.slice(0, limit)),
 
-  // Route 6
   getSectorMomentum: (_asOfDate, sectorName, limit = 200) => {
     const filtered = sectorName
       ? sectorsMomentum.filter((r) => r.sector_name === sectorName)
@@ -80,26 +68,22 @@ const api = {
     return ok(filtered.slice(0, limit));
   },
 
-  // Route 7
   getCompanyNews: (ticker /* , lookbackDays, limit */) => {
     const rows = companiesNews[String(ticker).toUpperCase()];
     if (!rows) return notFound();
     return rows.length ? ok(rows) : empty();
   },
 
-  // Route 8
   getTrendingNews: (_lookbackDays = 30, _minArticles = 5, limit = 10) =>
     ok(newsTrending.slice(0, limit)),
 
-  // Route 9
   getSourceDisagreement: (_startDate, _endDate, _minSources = 2, limit = 50) =>
     ok(pricesSourceDisagreement.slice(0, limit)),
 
-  // Route 10
   getIndustryRotations: (_startDate, _endDate, limit = 50) =>
     ok(industriesRotations.slice(0, limit)),
 
-  // Helpers
+  // helpers
   getSectors: () => ok(sectorsList),
 
   getSectorCompanies: (sectorName, limit = 500) => {

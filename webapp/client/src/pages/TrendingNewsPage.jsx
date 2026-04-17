@@ -1,6 +1,5 @@
-// Trending news — SoT Route 8. Stocks with the highest news-mention
-// counts in the lookback window, filtered to those that beat their own
-// sector average.
+// trending news. stocks with the most news mentions in the lookback
+// window, filtered to ones beating their sector average
 
 import { useEffect, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';

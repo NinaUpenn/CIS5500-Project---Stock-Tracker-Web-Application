@@ -1,5 +1,5 @@
-// Industry rotations — SoT Route 10. Month-over-month rank shifts of
-// industries within their sector.
+// industry rotations. month-over-month rank shifts of industries
+// within their sector
 
 import { useEffect, useState } from 'react';
 import {
@@ -86,7 +86,7 @@ export default function IndustryRotationsPage() {
           setStatus('empty');
           return;
         }
-        // Synthesize a stable per-row key — sector+industry+month is unique.
+        // stable per-row key; sector+industry+month is unique
         const keyed = res.data.map((row) => ({
           ...row,
           key: `${row.sector_name}::${row.industry_name}::${row.month}`,
@@ -165,8 +165,8 @@ function Body({ status, rows }) {
       rows={rows}
       pageSize={15}
       keyField="key"
-      // Compose a stable-ish key since there's no natural single-column PK.
-      // Sector + industry + month is unique per row in this result set.
+      // no single-column pk, so compose one. sector+industry+month is
+      // unique per row in this result set
     />
   );
 }

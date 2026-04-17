@@ -1,5 +1,5 @@
-// Home page — marketing blurb + featured top-average-returns leaderboard
-// (SoT Route 5) so the landing page has real content on first load.
+// home page. blurb + a featured top-average-returns leaderboard
+// so the landing page has real content on first load
 
 import { useEffect, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
@@ -17,8 +17,8 @@ import { api } from '../services/api';
 import LazyTable from '../components/LazyTable';
 import { formatPercent, formatInteger, signedColor } from '../helpers/formatter';
 
-// Anchors returns to the dataset's latest trading day — no live data
-// after 2022-12-12.
+// anchors returns to the latest trading day in the dataset.
+// no live data after 2022-12-12
 const END_DATE = '2022-12-12';
 
 function Signed({ value, children }) {

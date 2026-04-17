@@ -4,6 +4,5 @@
   "rds_db": "postgres",
   "rds_user": "REPLACE_ME",
   "rds_password": "REPLACE_ME",
-  "server_port": 8080,
-  "ssl": true
+  "server_port": 8080
 }

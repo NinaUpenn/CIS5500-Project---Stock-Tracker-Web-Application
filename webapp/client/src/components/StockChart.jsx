@@ -1,9 +1,6 @@
-// StockChart — wraps MUI X LineChart for the closing-price series.
-// Accepts the SoT /api/companies/:ticker/prices row shape:
-//   { trading_date, close, ma_7_day?, ma_30_day?, sector_avg_close? }
-//
-// Optional overlay flags toggle the moving-average and sector-benchmark
-// series without re-fetching.
+// mui x linechart for the close-price series. expects the
+// /companies/:ticker/prices row shape. overlay flags toggle ma
+// and sector-benchmark lines without re-fetching
 
 import { Box, Typography } from '@mui/material';
 import { LineChart } from '@mui/x-charts/LineChart';

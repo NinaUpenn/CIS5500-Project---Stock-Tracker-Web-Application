@@ -1,6 +1,5 @@
-// Search page — type a prefix (ticker or company name), see matching
-// companies, click one to go to its detail page. Uses SoT Route 1 which
-// returns { ticker, company_name, industry_name, sector_name }.
+// search page. type a prefix (ticker or company name), pick one
+// from the matches to go to its detail page
 
 import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';

@@ -1,19 +1,8 @@
 // routes.js
-//
-// One exported handler per endpoint. Each handler receives the Express
-// (req, res) pair. The shared `pg.Pool` is injected at module load via
-// `initRoutes(pool)` — that keeps handlers easy to unit-test (tests call
-// `initRoutes(fakePool)` and then `request(app)`).
-//
-// All SQL matches the source-of-truth document:
-//   personal-notes/SQL for the final core API routes_queries.md
-//
 // 10 core routes + 3 helper routes, normalized against:
 //   company, industry, sector, company_profile, company_financial_snapshot,
 //   news_article, article_mention, price_daily, primary_price_daily view.
-//
-// All SQL MUST be parameterized ($1, $2, ...). Never interpolate user
-// input into a query string.
+
 
 let pool = null;
 
@@ -54,8 +43,7 @@ async function health(_req, res) {
     uptime_s: Math.round((Date.now() - SERVER_STARTED_AT) / 1000),
   };
 
-  // Quick round-trip to Postgres: proves the pool is live and returns a
-  // useful server_version string. `version()` is cheap (no table access).
+  //db healthcheck proves the pool is live
   const t0 = Date.now();
   try {
     const { rows } = await pool.query('SELECT version() AS server_version');
@@ -107,7 +95,7 @@ function parseRequiredDate(raw) {
   return parseDate(raw);
 }
 
-// ---------- Route 1 — GET /api/companies/search ----------
+// ---------- GET /api/companies/search ----------
 
 /**
  * @openapi
@@ -185,7 +173,7 @@ async function searchCompanies(req, res) {
   }
 }
 
-// ---------- Route 2 — GET /api/companies/:ticker ----------
+// ---------- GET /api/companies/:ticker ----------
 
 /**
  * @openapi
@@ -276,7 +264,7 @@ async function getCompany(req, res) {
   }
 }
 
-// ---------- Route 3 — GET /api/companies/:ticker/prices ----------
+// ---------- GET /api/companies/:ticker/prices ----------
 
 /**
  * @openapi
@@ -321,6 +309,9 @@ async function getCompanyPrices(req, res) {
   }
 
   try {
+    // optimized w bypass primary_price_daily view
+    // inline DISTINCT ON with
+    // date filter pushed into price_daily base scan
     const { rows } = await pool.query(
       `with target as (
          select c.company_id, c.ticker, c.company_name,
@@ -331,22 +322,21 @@ async function getCompanyPrices(req, res) {
          join sector s on s.sector_id = i.sector_id
          where c.ticker = upper(trim($1))
        ),
-       company_prices as (
-         select pp.company_id, pp.trading_date, pp.open, pp.high, pp.low,
-                pp.close, pp.adj_close, pp.volume
-         from primary_price_daily pp
-         join target t on t.company_id = pp.company_id
-         where ($2::date is null or pp.trading_date >= $2::date)
-           and ($3::date is null or pp.trading_date <= $3::date)
-       ),
-       sector_prices as (
-         select pp.company_id, pp.trading_date, pp.close
-         from primary_price_daily pp
-         join company c on c.company_id = pp.company_id
+       sector_companies as (
+         select c.company_id
+         from company c
          join industry i on i.industry_id = c.industry_id
          join target t on t.sector_id = i.sector_id
-         where ($2::date is null or pp.trading_date >= $2::date)
-           and ($3::date is null or pp.trading_date <= $3::date)
+       ),
+       sector_prices as (
+         select distinct on (pd.company_id, pd.trading_date)
+                pd.company_id, pd.trading_date, pd.close
+         from price_daily pd
+         join price_source ps on ps.source_id = pd.source_id
+         join sector_companies sc on sc.company_id = pd.company_id
+         where ($2::date is null or pd.trading_date >= $2::date)
+           and ($3::date is null or pd.trading_date <= $3::date)
+         order by pd.company_id, pd.trading_date, ps.priority_rank
        ),
        sector_benchmark as (
          select trading_date, avg(close) as sector_avg_close
@@ -357,6 +347,17 @@ async function getCompanyPrices(req, res) {
          select trading_date, company_id,
                 rank() over (partition by trading_date order by close desc nulls last) as sector_price_rank
          from sector_prices
+       ),
+       company_prices as (
+         select distinct on (pd.company_id, pd.trading_date)
+                pd.company_id, pd.trading_date, pd.open, pd.high, pd.low,
+                pd.close, pd.adj_close, pd.volume
+         from price_daily pd
+         join price_source ps on ps.source_id = pd.source_id
+         join target t on t.company_id = pd.company_id
+         where ($2::date is null or pd.trading_date >= $2::date)
+           and ($3::date is null or pd.trading_date <= $3::date)
+         order by pd.company_id, pd.trading_date, ps.priority_rank
        )
        select
          t.company_name,
@@ -385,7 +386,7 @@ async function getCompanyPrices(req, res) {
   }
 }
 
-// ---------- Route 4 — GET /api/stocks/top-gainers ----------
+// ---------- GET /api/stocks/top-gainers ----------
 
 /**
  * @openapi
@@ -426,46 +427,59 @@ async function getTopGainers(req, res) {
   if (!limit.ok) return res.status(422).json({ error: 'limit must be a positive integer' });
 
   try {
+    // optimized: replace LATERAL prev-day lookups with a single row_number()
     const { rows } = await pool.query(
-      `with latest as (
-         select pp.company_id, pp.trading_date, pp.close
-         from primary_price_daily pp
-         where pp.trading_date = $1::date
+      `with anchor as (
+         select max(trading_date) as anchor_date
+         from price_daily
+         where trading_date <= $1::date
        ),
-       with_prev as (
-         select l.company_id, l.trading_date, l.close,
-                p.prev_trading_date, p.prev_close,
-                (l.close / nullif(p.prev_close, 0) - 1) * 100 as pct_change
-         from latest l
-         join lateral (
-           select pp2.trading_date as prev_trading_date, pp2.close as prev_close
-           from primary_price_daily pp2
-           where pp2.company_id = l.company_id and pp2.trading_date < l.trading_date
-           order by pp2.trading_date desc
-           limit 1
-         ) p on true
+       sliced as (
+         select distinct on (pd.company_id, pd.trading_date)
+                pd.company_id, pd.trading_date, pd.close
+         from price_daily pd
+         join price_source ps on ps.source_id = pd.source_id
+         join anchor a on pd.trading_date between a.anchor_date - interval '10 days' and a.anchor_date
+         order by pd.company_id, pd.trading_date, ps.priority_rank
+       ),
+       two_days as (
+         select company_id, trading_date, close,
+                row_number() over (partition by company_id order by trading_date desc) as rn
+         from sliced
+       ),
+       paired as (
+         select curr.company_id,
+                curr.trading_date,
+                curr.close,
+                prev.trading_date as prev_trading_date,
+                prev.close as prev_close,
+                (curr.close / nullif(prev.close, 0) - 1) * 100 as pct_change
+         from two_days curr
+         join two_days prev
+           on prev.company_id = curr.company_id and prev.rn = curr.rn + 1
+         where curr.rn = 1
        ),
        sector_avg as (
-         select i.sector_id, avg(wp.pct_change) as avg_sector_change
-         from with_prev wp
-         join company c on c.company_id = wp.company_id
+         select i.sector_id, avg(p.pct_change) as avg_sector_change
+         from paired p
+         join company c on c.company_id = p.company_id
          join industry i on i.industry_id = c.industry_id
          group by i.sector_id
        )
        select
          c.ticker, c.company_name,
          s.sector_name, i.industry_name,
-         wp.trading_date, wp.prev_trading_date,
-         wp.close, wp.prev_close, wp.pct_change,
+         p.trading_date, p.prev_trading_date,
+         p.close, p.prev_close, p.pct_change,
          sa.avg_sector_change,
-         rank() over (partition by s.sector_id order by wp.pct_change desc) as sector_rank
-       from with_prev wp
-       join company c on c.company_id = wp.company_id
+         rank() over (partition by s.sector_id order by p.pct_change desc) as sector_rank
+       from paired p
+       join company c on c.company_id = p.company_id
        join industry i on i.industry_id = c.industry_id
        join sector s on s.sector_id = i.sector_id
        join sector_avg sa on sa.sector_id = s.sector_id
-       where wp.pct_change > sa.avg_sector_change
-       order by wp.pct_change desc
+       where p.pct_change > sa.avg_sector_change
+       order by p.pct_change desc
        limit coalesce($2::int, 10)`,
       [tradingDate.value, limit.value],
     );
@@ -476,9 +490,9 @@ async function getTopGainers(req, res) {
   }
 }
 
-// ---------- Route 5 — GET /api/stocks/top-average-returns ----------
-// Window is ~30 calendar days (~21 trading days); the min_observations
-// floor (default 10) guards against short-history tickers.
+// ---------- GET /api/stocks/top-average-returns ----------
+// Window is ~30 calendar days; the min_observations
+// floor guards against short-history tickers.
 
 /**
  * @openapi
@@ -568,8 +582,8 @@ async function getTopAverageReturns(req, res) {
   }
 }
 
-// ---------- Route 6 — GET /api/sectors/momentum ----------
-// return_7d is a 7 trading-day lag (~9 calendar).
+// ---------- GET /api/sectors/momentum ----------
+// return_7d is a 7 trading-day lag
 
 /**
  * @openapi
@@ -614,23 +628,30 @@ async function getSectorMomentum(req, res) {
   if (!limit.ok) return res.status(422).json({ error: 'limit must be a positive integer' });
 
   try {
+    // optimized: bypass primary_price_daily view
     const { rows } = await pool.query(
       `with anchor as (
-         select coalesce(
-           (select max(trading_date) from primary_price_daily
-            where trading_date <= coalesce($1::date, current_date)),
-           (select max(trading_date) from primary_price_daily)
-         ) as as_of_date
+         select max(trading_date) as as_of_date
+         from price_daily
+         where trading_date <= coalesce($1::date, current_date)
        ),
-       all_series as (
-         select pp.company_id, pp.trading_date, pp.close,
-                lag(pp.close, 7) over (partition by pp.company_id order by pp.trading_date) as close_7d_ago
-         from primary_price_daily pp
+       sliced as (
+         select distinct on (pd.company_id, pd.trading_date)
+                pd.company_id, pd.trading_date, pd.close
+         from price_daily pd
+         join price_source ps on ps.source_id = pd.source_id
+         join anchor a on pd.trading_date between a.as_of_date - interval '20 days' and a.as_of_date
+         order by pd.company_id, pd.trading_date, ps.priority_rank
+       ),
+       with_lag as (
+         select company_id, trading_date, close,
+                lag(close, 7) over (partition by company_id order by trading_date) as close_7d_ago
+         from sliced
        ),
        asof_returns as (
          select s.company_id, a.as_of_date,
                 (s.close / nullif(s.close_7d_ago, 0) - 1) * 100 as return_7d
-         from all_series s
+         from with_lag s
          join anchor a on s.trading_date = a.as_of_date
          where s.close_7d_ago is not null
        ),
@@ -670,7 +691,7 @@ async function getSectorMomentum(req, res) {
   }
 }
 
-// ---------- Route 7 — GET /api/companies/:ticker/news ----------
+// ---------- GET /api/companies/:ticker/news ----------
 
 /**
  * @openapi
@@ -709,6 +730,7 @@ async function getCompanyNews(req, res) {
   if (!limit.ok) return res.status(422).json({ error: 'limit must be a positive integer' });
 
   try {
+    // Optimized: scope mention_stats to the target company only
     const { rows } = await pool.query(
       `with target as (
          select c.company_id, c.ticker, c.company_name,
@@ -718,22 +740,20 @@ async function getCompanyNews(req, res) {
          left join sector s on s.sector_id = i.sector_id
          where c.ticker = upper(trim($1))
        ),
-       mention_stats as (
-         select am.company_id,
-                count(distinct na.article_id) filter (
-                  where na.published_at >= current_timestamp
-                        - (coalesce($2::int, 30) * interval '1 day')
-                ) as articles_in_window
-         from article_mention am
+       target_mentions as (
+         select count(distinct na.article_id) as articles_in_window
+         from target t
+         join article_mention am on am.company_id = t.company_id
          join news_article na on na.article_id = am.article_id
-         group by am.company_id
+         where na.published_at >= current_timestamp
+               - (coalesce($2::int, 30) * interval '1 day')
        )
        select
          t.company_name, t.ticker, t.sector_name, t.industry_name,
          na.source, na.published_at, na.title, na.summary, na.url,
          na.lm_level, na.lm_score1, na.lm_score2, na.lm_sentiment,
          am.mention_confidence,
-         ms.articles_in_window,
+         tm.articles_in_window,
          rank() over (
            partition by t.company_id
            order by na.published_at desc, na.article_id desc
@@ -741,7 +761,7 @@ async function getCompanyNews(req, res) {
        from target t
        join article_mention am on am.company_id = t.company_id
        join news_article na on na.article_id = am.article_id
-       left join mention_stats ms on ms.company_id = t.company_id
+       cross join target_mentions tm
        where na.published_at >= current_timestamp
              - (coalesce($2::int, 30) * interval '1 day')
        order by na.published_at desc, na.article_id desc
@@ -755,7 +775,7 @@ async function getCompanyNews(req, res) {
   }
 }
 
-// ---------- Route 8 — GET /api/news/trending ----------
+// ---------- GET /api/news/trending ----------
 
 /**
  * @openapi
@@ -837,7 +857,7 @@ async function getTrendingNews(req, res) {
   }
 }
 
-// ---------- Route 9 — GET /api/prices/source-disagreement ----------
+// ---------- GET /api/prices/source-disagreement ----------
 // Uses raw price_daily (not primary_price_daily) on purpose — we want to
 // compare sources, and primary_price_daily picks only the highest-priority
 // source per (company, date).
@@ -930,7 +950,7 @@ async function getSourceDisagreement(req, res) {
   }
 }
 
-// ---------- Route 10 — GET /api/industries/rotations ----------
+// ---------- GET /api/industries/rotations ----------
 // Guards `ln(1 + ret)` against ret <= -1 (stock drops ≥100% in a day).
 
 /**
@@ -977,14 +997,22 @@ async function getIndustryRotations(req, res) {
   if (!limit.ok) return res.status(422).json({ error: 'limit must be a positive integer' });
 
   try {
+    // optimized: bypass primary_price_daily view
     const { rows } = await pool.query(
-      `with daily_returns as (
-         select pp.company_id, pp.trading_date,
-                (pp.close / nullif(lag(pp.close) over (
-                  partition by pp.company_id order by pp.trading_date
+      `with sliced as (
+         select distinct on (pd.company_id, pd.trading_date)
+                pd.company_id, pd.trading_date, pd.close
+         from price_daily pd
+         join price_source ps on ps.source_id = pd.source_id
+         where pd.trading_date between $1::date and $2::date
+         order by pd.company_id, pd.trading_date, ps.priority_rank
+       ),
+       daily_returns as (
+         select company_id, trading_date,
+                (close / nullif(lag(close) over (
+                  partition by company_id order by trading_date
                 ), 0) - 1) as ret
-         from primary_price_daily pp
-         where pp.trading_date between $1::date and $2::date
+         from sliced
        ),
        company_month as (
          select dr.company_id,
@@ -1162,7 +1190,7 @@ async function listCompanies(req, res) {
 module.exports = {
   initRoutes,
   health,
-  // 10 core routes
+  // core routes
   searchCompanies,
   getCompany,
   getCompanyPrices,
@@ -1173,7 +1201,7 @@ module.exports = {
   getTrendingNews,
   getSourceDisagreement,
   getIndustryRotations,
-  // 3 helpers
+  // helpers
   listSectors,
   listSectorCompanies,
   listCompanies,

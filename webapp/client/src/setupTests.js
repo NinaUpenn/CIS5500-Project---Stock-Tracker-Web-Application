@@ -1,10 +1,9 @@
-// CRA auto-loads this before any test file.
-// Adds jest-dom matchers like toBeInTheDocument.
+// cra auto-loads this before any test file.
+// adds jest-dom matchers like toBeInTheDocument.
 import '@testing-library/jest-dom';
 
-// jsdom does not implement ResizeObserver, and Recharts'
-// <ResponsiveContainer> expects it. A no-op stub is enough for tests —
-// layout happens in real browsers, not here.
+// jsdom doesn't implement ResizeObserver, but recharts' ResponsiveContainer
+// needs it. no-op stub is fine since layout only matters in real browsers.
 if (typeof globalThis.ResizeObserver === 'undefined') {
   globalThis.ResizeObserver = class {
     observe() {}

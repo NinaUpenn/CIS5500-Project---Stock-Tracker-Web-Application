@@ -1,16 +1,5 @@
-// services/api.js
-//
-// THE ONE FETCH SEAM.
-// Every component in the app imports `api` from this file and nothing
-// else — they never call fetch() directly. That single rule is what
-// makes the whole mock-mode toggle work:
-//
-//   REACT_APP_USE_MOCKS=true  -> resolves to ./api.mock (static JSON)
-//   REACT_APP_USE_MOCKS=false -> resolves to ./api.real  (fetch -> API)
-//
-// Both modules export an object with the SAME method names and the
-// SAME return shapes. Swapping implementations must not require any
-// change to callers.
+// single fetch seam. everyone imports `api` from here. swaps between
+// real and mock impls via react_app_use_mocks
 
 const useMocks = process.env.REACT_APP_USE_MOCKS === 'true';
 

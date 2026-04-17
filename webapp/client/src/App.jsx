@@ -1,4 +1,4 @@
-// Top-level app: theming + routing. One place to see every page.
+// top-level app. theming + routing, every page is wired up here
 
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';

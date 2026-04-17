@@ -1,17 +1,4 @@
-// server.js
-//
-// Express wiring for the Phase 1 API. Responsibilities:
-//   1. Load config (RDS credentials + port) from config.json.
-//      Missing file => fall back to config.example.json so `npm test`
-//      works without real credentials.
-//   2. Create a shared pg.Pool and inject it into routes.js.
-//   3. Register one route per endpoint.
-//   4. Export the Express `app` so supertest can hit it in-process
-//      without opening a real socket.
-//
-// Running `node server.js` directly (not via require) starts the
-// listener. When the file is required by tests, the listen() call is
-// skipped — see the `require.main === module` guard at the bottom.
+// Express app wiring and entry point
 
 const fs = require('fs');
 const path = require('path');
@@ -23,11 +10,11 @@ const swaggerUi = require('swagger-ui-express');
 
 const routes = require('./routes');
 
-// OpenAPI 3 spec, built once at startup from @openapi JSDoc blocks in
-// routes.js. Served as JSON at /api-docs.json and rendered as an
-// interactive Swagger UI at /api-docs.
 const API_PREFIX = '/api/v1';
 
+// OpenAPI 3 spec, 
+// built once at startup from @openapi JSDoc blocks in routes.js. 
+// Served as JSON at /api-docs.json and rendered as an interactive Swagger UI at /api-docs.
 const openapiSpec = swaggerJsdoc({
   definition: {
     openapi: '3.0.0',
@@ -35,7 +22,7 @@ const openapiSpec = swaggerJsdoc({
       title: 'Stock Tracker API',
       version: '1.0.0',
       description:
-        'Normalized S&P 500 stock tracker — prices, sector/industry rollups, and news. Routes match the SoT SQL in personal-notes/SQL for the final core API routes_queries.md.',
+        'Normalized S&P 500 stock tracker prices, sector/industry rollups, and news.',
     },
     servers: [
       { url: API_PREFIX, description: 'Versioned API base (relative to server host)' },
@@ -108,7 +95,7 @@ const openapiSpec = swaggerJsdoc({
           },
         },
 
-        // --- Route 2 /companies/:ticker ---
+        // --- /companies/:ticker ---
         CompanyProfile: {
           type: 'object',
           required: ['company_id', 'ticker'],
@@ -148,7 +135,7 @@ const openapiSpec = swaggerJsdoc({
           },
         },
 
-        // --- Route 3 /companies/:ticker/prices ---
+        // --- /companies/:ticker/prices ---
         CompanyPriceRow: {
           type: 'object',
           required: ['trading_date', 'ticker'],
@@ -172,7 +159,7 @@ const openapiSpec = swaggerJsdoc({
           },
         },
 
-        // --- Route 4 /stocks/top-gainers ---
+        // --- /stocks/top-gainers ---
         TopGainerRow: {
           type: 'object',
           required: ['ticker', 'pct_change'],
@@ -191,7 +178,7 @@ const openapiSpec = swaggerJsdoc({
           },
         },
 
-        // --- Route 5 /stocks/top-average-returns ---
+        // --- /stocks/top-average-returns ---
         TopReturnRow: {
           type: 'object',
           required: ['ticker', 'avg_daily_return'],
@@ -207,7 +194,7 @@ const openapiSpec = swaggerJsdoc({
           },
         },
 
-        // --- Route 6 /sectors/momentum ---
+        // --- /sectors/momentum ---
         SectorMomentumRow: {
           type: 'object',
           required: ['ticker', 'return_7d'],
@@ -223,7 +210,7 @@ const openapiSpec = swaggerJsdoc({
           },
         },
 
-        // --- Route 7 /companies/:ticker/news ---
+        // --- /companies/:ticker/news ---
         CompanyNewsRow: {
           type: 'object',
           required: ['ticker', 'title', 'published_at'],
@@ -251,7 +238,7 @@ const openapiSpec = swaggerJsdoc({
           },
         },
 
-        // --- Route 8 /news/trending ---
+        // --- /news/trending ---
         TrendingNewsRow: {
           type: 'object',
           required: ['ticker', 'article_count'],
@@ -266,7 +253,7 @@ const openapiSpec = swaggerJsdoc({
           },
         },
 
-        // --- Route 9 /prices/source-disagreement ---
+        // --- /prices/source-disagreement ---
         SourceDisagreementRow: {
           type: 'object',
           required: ['ticker', 'trading_date'],
@@ -282,7 +269,7 @@ const openapiSpec = swaggerJsdoc({
           },
         },
 
-        // --- Route 10 /industries/rotations ---
+        // --- /industries/rotations ---
         IndustryRotationRow: {
           type: 'object',
           required: ['sector_name', 'industry_name', 'month'],
@@ -329,16 +316,13 @@ function loadConfig() {
 }
 
 function buildPool(config) {
-  // Local Docker Postgres isn't configured for SSL; RDS requires it.
-  // Opt in via `"ssl": true` in config.json (or anything truthy).
-  const ssl = config.ssl ? { rejectUnauthorized: false } : false;
   return new Pool({
     host: config.rds_host,
     port: config.rds_port,
     database: config.rds_db,
     user: config.rds_user,
     password: config.rds_password,
-    ssl,
+    ssl: { rejectUnauthorized: false },
   });
 }
 
@@ -349,44 +333,39 @@ function createApp(pool) {
   app.use(cors());
   app.use(express.json());
 
-  // Swagger / OpenAPI docs live at the root so humans can find them.
-  // Spec declares `servers: [{ url: '/api/v1' }]` so the "Try it out"
-  // button automatically prepends the version prefix.
+  //swagger and open-api
   app.get('/api-docs.json', (_req, res) => res.json(openapiSpec));
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapiSpec));
 
-  // Versioned sub-router. Everything data-facing lives under /api/v1/*
-  // so we can cut /api/v2 later without breaking existing clients.
-  // Express matches declaration order, so every static path under
-  // /companies/* must register BEFORE the :ticker param route. Same for
-  // /stocks/*, /sectors/*.
+  // keep this versioned sub-router. everything data-facing lives under /api/v1/*
+  // so we can cut /api/v2 later without breaking existing clients
   const v1 = express.Router();
 
   v1.get('/health', routes.health);
 
-  // Companies
+  // companies
   v1.get('/companies/search', routes.searchCompanies);
   v1.get('/companies', routes.listCompanies);
   v1.get('/companies/:ticker/prices', routes.getCompanyPrices);
   v1.get('/companies/:ticker/news', routes.getCompanyNews);
   v1.get('/companies/:ticker', routes.getCompany);
 
-  // Stocks
+  // stocks
   v1.get('/stocks/top-gainers', routes.getTopGainers);
   v1.get('/stocks/top-average-returns', routes.getTopAverageReturns);
 
-  // Sectors
+  // sectors
   v1.get('/sectors/momentum', routes.getSectorMomentum);
   v1.get('/sectors/:sector/companies', routes.listSectorCompanies);
   v1.get('/sectors', routes.listSectors);
 
-  // News
+  // news
   v1.get('/news/trending', routes.getTrendingNews);
 
-  // Prices
+  // prices
   v1.get('/prices/source-disagreement', routes.getSourceDisagreement);
 
-  // Industries
+  // industries
   v1.get('/industries/rotations', routes.getIndustryRotations);
 
   app.use(API_PREFIX, v1);
@@ -398,14 +377,11 @@ const config = loadConfig();
 const pool = buildPool(config);
 const app = createApp(pool);
 
-// Only start the listener when this file is the program entry point.
-// Tests import `app` directly via supertest and must not bind a port.
+
 if (require.main === module) {
   app.listen(config.server_port, () => {
     const origin = `http://localhost:${config.server_port}`;
-    // Most terminals (VS Code, Windows Terminal, iTerm2, etc.) auto-link
-    // any full http(s):// URL, so printing the whole URL makes each row
-    // clickable. Keep the labels in a fixed-width column for readability.
+    //clickable server info links
     const links = [
       ['API base',  `${origin}${API_PREFIX}`],
       ['Health',    `${origin}${API_PREFIX}/health`],

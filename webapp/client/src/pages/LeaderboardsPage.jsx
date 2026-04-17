@@ -1,13 +1,5 @@
-// Leaderboards — five tabs covering the SoT analytics routes.
-// Each tab opens with a description card explaining what the metric
-// measures and how to read the table, then renders the ranked rows.
-//
-// Tab → SoT route mapping:
-//   1. Top gainers (daily)     → Route 4
-//   2. Top avg returns (30d)   → Route 5
-//   3. Sector momentum (7d)    → Route 6
-//   4. Trending news           → Route 8
-//   5. Source disagreement     → Route 9
+// leaderboards. five tabs covering the analytics routes. each tab
+// opens with a description card, then renders the ranked rows
 
 import { useCallback, useEffect, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
@@ -56,7 +48,7 @@ function TickerLink({ ticker }) {
   );
 }
 
-// ---------- Column definitions ----------
+// column definitions
 
 const TOP_GAINERS_COLUMNS = [
   { field: 'sector_rank', header: 'Sector #', align: 'right' },
@@ -191,7 +183,7 @@ const DISAGREEMENT_COLUMNS = [
   },
 ];
 
-// ---------- Descriptions ----------
+// descriptions
 
 const DESCRIPTIONS = {
   gainers: {
@@ -255,7 +247,7 @@ const DESCRIPTIONS = {
   },
 };
 
-// ---------- Page ----------
+// page
 
 export default function LeaderboardsPage() {
   const [tab, setTab] = useState('returns');
@@ -324,10 +316,10 @@ function MetricExplainer({ description }) {
   );
 }
 
-// Callers wrap their api call in useCallback so `fetcher` has a stable
-// identity between renders — the effect re-runs exactly when the
-// dependencies captured in that useCallback change. This avoids the
-// need for an eslint-disable on exhaustive-deps.
+// callers wrap their api call in usecallback so `fetcher` has a stable
+// identity across renders. the effect re-runs only when the deps
+// captured in that usecallback change, which avoids needing an
+// eslint-disable on exhaustive-deps
 function useAsync(fetcher) {
   const [rows, setRows] = useState([]);
   const [status, setStatus] = useState('loading');
@@ -376,7 +368,7 @@ function StateWrapper({ status, children }) {
   return children;
 }
 
-// ---------- Tab bodies ----------
+// tab bodies
 
 function TopGainersTab() {
   const [tradingDate, setTradingDate] = useState(DATA_END);

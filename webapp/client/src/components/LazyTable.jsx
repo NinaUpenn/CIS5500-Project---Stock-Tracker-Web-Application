@@ -1,11 +1,6 @@
-// LazyTable — a small, declarative table built on MUI that handles:
-//   * column definitions with custom render fns,
-//   * client-side pagination,
-//   * row `key` from an opinionated accessor,
-//   * empty-state fallback.
-//
-// Kept intentionally minimal; we add features (sorting, server-side
-// paging) only when a concrete page needs them.
+// mui table wrapper. client-side pagination + empty state.
+// columns: [{ field, header, render?, align? }]
+// rows need a unique `keyField` value each
 
 import { useState, useMemo } from 'react';
 import {
@@ -20,10 +15,6 @@ import {
   TableContainer,
 } from '@mui/material';
 
-/**
- * columns: [{ field, header, render?, align? }]
- * rows:    array of objects (must have a unique `keyField` value)
- */
 export default function LazyTable({
   columns,
   rows,

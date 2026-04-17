@@ -1,7 +1,7 @@
-// Stock detail page. Composes three SoT endpoints:
-//   * Route 2 — /companies/:ticker        (rich profile + snapshot + latest)
-//   * Route 3 — /companies/:ticker/prices (OHLCV + MA + sector benchmark)
-//   * Route 7 — /companies/:ticker/news   (articles with sentiment)
+// stock detail page. pulls from three endpoints:
+//   /companies/:ticker         (profile + snapshot + latest)
+//   /companies/:ticker/prices  (ohlcv + ma + sector benchmark)
+//   /companies/:ticker/news    (articles with sentiment)
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -32,8 +32,8 @@ import {
   signedColor,
 } from '../helpers/formatter';
 
-// Dataset ends 2022-12-12. Range presets anchor to this "last trading
-// day" rather than today, since there is no post-2022 data.
+// dataset ends 2022-12-12. range presets anchor to this "last trading
+// day" instead of today, since there's no post-2022 data
 const DATA_END = '2022-12-12';
 
 const RANGES = [
@@ -83,7 +83,7 @@ export default function StockPage() {
 
   const window = useMemo(() => rangeToWindow(range), [range]);
 
-  // Profile + news — depend only on ticker.
+  // profile + news: only depend on ticker
   useEffect(() => {
     let cancelled = false;
     setStatus('loading');
@@ -136,7 +136,7 @@ export default function StockPage() {
     };
   }, [upper]);
 
-  // Prices refetch whenever the selected range changes.
+  // prices refetch whenever the selected range changes
   useEffect(() => {
     let cancelled = false;
     setPricesLoading(true);
@@ -322,11 +322,9 @@ function Body({
   );
 }
 
-// Profile is split into three independent section components so `Body`
-// can interleave the closing-price chart between Latest trade and
-// Valuation snapshot. Each sits in its own Paper with matching top
-// margin; the chart Paper uses the same `mt: 3` so the rhythm stays
-// consistent without the old Stack wrapper.
+// profile is split into three section components so `body` can
+// interleave the price chart between latest-trade and valuation-
+// snapshot. each sits in its own paper with matching top margin
 
 function LatestTradeSection({ profile }) {
   if (!profile) return null;
@@ -440,6 +438,5 @@ function StatGrid({ stats }) {
   );
 }
 
-// Re-export Signed for potential test composition (referenced only to
-// keep the helper in tree-shaking range when other pages adopt it).
+// re-export signed for tests / future reuse on other pages
 export { Signed };

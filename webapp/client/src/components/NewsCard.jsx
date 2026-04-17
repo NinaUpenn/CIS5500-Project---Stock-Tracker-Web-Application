@@ -1,6 +1,5 @@
-// NewsCard — renders one /companies/:ticker/news or /news/trending row.
-// Used on StockPage (per-ticker news) and TrendingNewsPage (cross-ticker
-// trending list).
+// renders one news row. used on stockpage (per-ticker)
+// and trendingnewspage (cross-ticker)
 
 import { Paper, Typography, Link as MuiLink, Box, Chip } from '@mui/material';
 import { formatDate } from '../helpers/formatter';

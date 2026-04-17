@@ -1,6 +1,4 @@
-// Top-of-app navigation. Uses MUI AppBar for layout and react-router
-// NavLink so the active tab gets a distinct style without any extra
-// state plumbing on our side.
+// top nav. navlink handles the active-tab styling for us
 
 import { AppBar, Toolbar, Typography, Box, Button } from '@mui/material';
 import { NavLink } from 'react-router-dom';

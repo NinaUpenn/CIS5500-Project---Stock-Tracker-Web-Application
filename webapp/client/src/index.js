@@ -1,4 +1,4 @@
-// React entry point. CRA looks here by default.
+// react entry point. cra looks here by default
 
 import React from 'react';
 import { createRoot } from 'react-dom/client';

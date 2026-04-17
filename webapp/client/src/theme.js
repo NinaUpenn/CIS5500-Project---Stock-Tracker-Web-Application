@@ -1,5 +1,4 @@
-// Centralized MUI theme. Kept tiny on purpose — one source of truth
-// for color and typography so components never hard-code colors.
+// mui theme. keep colors + typography out of components
 
 import { createTheme } from '@mui/material/styles';
 

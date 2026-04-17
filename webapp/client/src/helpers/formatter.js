@@ -1,8 +1,5 @@
-// Pure formatting helpers. Kept in their own module (no React imports)
-// so unit tests are trivial — feed in a value, assert the string out.
-//
-// All helpers gracefully handle null / undefined / NaN so the caller
-// never has to pre-check: `formatPercent(null)` returns '—', etc.
+// formatting helpers. non-numeric input (null/undefined/nan) renders
+// as an em dash so callers don't need to pre-check
 
 const DASH = '—';
 
@@ -33,8 +30,7 @@ export function formatPrice(value, digits = 2) {
   return `$${formatNumber(value, digits)}`;
 }
 
-// Returns an MUI palette token for signed financial values:
-// non-negative → success (green), negative → error (red), null → default.
+// mui palette token for signed values (green/red/default)
 export function signedColor(value) {
   if (!isNumeric(value)) return 'text.primary';
   return Number(value) >= 0 ? 'success.main' : 'error.main';
