@@ -36,7 +36,7 @@ export default function NavBar() {
     <AppBar position="static" component="nav" aria-label="Primary">
       <Toolbar>
         <Typography variant="h6" component="div" sx={{ flexGrow: 0, mr: 4 }}>
-          Stock News Trader
+          Stock News Analyzer
         </Typography>
         <Box sx={{ display: 'flex', flexGrow: 1 }}>
           {links.map((link) => (

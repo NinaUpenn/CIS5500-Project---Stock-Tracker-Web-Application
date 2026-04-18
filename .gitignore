@@ -4,32 +4,20 @@ spec_design/
 
 # Node
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
 *.log
-pids/
-*.pid
-*.seed
 
 # CRA build output
 webapp/client/build/
 webapp/client/.eslintcache
 
-# Real DB credentials — keep the template (config.example.json) only
+# Real DB credentials — keep config.example.json only
 webapp/server/config.json
 
-# Env files with real values
+# Env files
 .env
 .env.local
-webapp/client/.env
-webapp/client/.env.local
-webapp/client/.env.development.local
-webapp/client/.env.test.local
-webapp/client/.env.production.local
-webapp/server/.env
-webapp/server/.env.local
+webapp/client/.env*
+webapp/server/.env*
 
 # OS junk
 .DS_Store
@@ -40,7 +28,6 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
-*.swo
 *~
 
 # Test output
@@ -55,16 +42,6 @@ webapp/client/src/setupTests.js
 # Build / cache artifacts
 dist/
 .cache/
-.parcel-cache/
 .next/
 .turbo/
-.temp/
 tmp/
-
-# Local DB imports (too large for git, user-specific paths)
-webapp/db/import/
-*.csv
-
-# Local Postgres data if anyone bind-mounts into the repo
-webapp/db/pgdata/
-webapp/db/data/

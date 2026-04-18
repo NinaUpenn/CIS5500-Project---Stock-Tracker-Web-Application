@@ -1,7 +1,7 @@
 {
   "name": "stock-tracker-server",
   "version": "1.0.0",
-  "description": "Stock News Trader - Phase 1 API",
+  "description": "Stock News Analyzer - Phase 1 API",
   "main": "server.js",
   "scripts": {
     "start": "nodemon server.js",
