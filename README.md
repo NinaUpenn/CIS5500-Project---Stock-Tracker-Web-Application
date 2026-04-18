@@ -12,6 +12,15 @@ webapp/
 └── server/   # Node.js + Express API (connects to PostgreSQL on AWS RDS)
 ```
 
+## Dependencies
+
+All dependencies are listed in the `package.json` file inside each subproject:
+
+- [webapp/server/package.json](webapp/server/package.json) — backend (Express, pg, etc.)
+- [webapp/client/package.json](webapp/client/package.json) — frontend (React, MUI, etc.)
+
+Running `npm install` in each folder installs everything listed there.
+
 ## Running Locally
 
 You need **Node.js 18+** installed. Open two terminals.
