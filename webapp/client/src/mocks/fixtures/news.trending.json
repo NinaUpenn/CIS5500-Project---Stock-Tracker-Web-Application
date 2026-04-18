@@ -1,0 +1,7 @@
+[
+  { "ticker": "TSLA", "company_name": "Tesla, Inc.", "sector_name": "Consumer Discretionary", "industry_name": "Auto Manufacturers", "article_count": 22, "avg_sector_mentions": 6.4, "sector_rank": 1 },
+  { "ticker": "AAPL", "company_name": "Apple Inc.", "sector_name": "Technology", "industry_name": "Consumer Electronics", "article_count": 14, "avg_sector_mentions": 5.1, "sector_rank": 1 },
+  { "ticker": "META", "company_name": "Meta Platforms, Inc.", "sector_name": "Communication Services", "industry_name": "Interactive Media & Services", "article_count": 12, "avg_sector_mentions": 4.2, "sector_rank": 1 },
+  { "ticker": "MSFT", "company_name": "Microsoft Corporation", "sector_name": "Technology", "industry_name": "Software Infrastructure", "article_count": 9, "avg_sector_mentions": 5.1, "sector_rank": 2 },
+  { "ticker": "GOOGL", "company_name": "Alphabet Inc.", "sector_name": "Communication Services", "industry_name": "Interactive Media & Services", "article_count": 8, "avg_sector_mentions": 4.2, "sector_rank": 2 }
+]

@@ -1,0 +1,7 @@
+[
+  { "ticker": "NVDA", "company_name": "NVIDIA Corporation", "sector_name": "Technology", "industry_name": "Semiconductors", "trading_date": "2022-12-12", "prev_trading_date": "2022-12-09", "close": 169.65, "prev_close": 158.68, "pct_change": 6.92, "avg_sector_change": 1.42, "sector_rank": 1 },
+  { "ticker": "AAPL", "company_name": "Apple Inc.", "sector_name": "Technology", "industry_name": "Consumer Electronics", "trading_date": "2022-12-12", "prev_trading_date": "2022-12-09", "close": 144.49, "prev_close": 142.16, "pct_change": 1.64, "avg_sector_change": 1.42, "sector_rank": 2 },
+  { "ticker": "TSLA", "company_name": "Tesla, Inc.", "sector_name": "Consumer Discretionary", "industry_name": "Auto Manufacturers", "trading_date": "2022-12-12", "prev_trading_date": "2022-12-09", "close": 167.82, "prev_close": 156.80, "pct_change": 7.03, "avg_sector_change": 2.1, "sector_rank": 1 },
+  { "ticker": "AMZN", "company_name": "Amazon.com, Inc.", "sector_name": "Consumer Discretionary", "industry_name": "Internet Retail", "trading_date": "2022-12-12", "prev_trading_date": "2022-12-09", "close": 92.49, "prev_close": 89.09, "pct_change": 3.82, "avg_sector_change": 2.1, "sector_rank": 2 },
+  { "ticker": "MSFT", "company_name": "Microsoft Corporation", "sector_name": "Technology", "industry_name": "Software Infrastructure", "trading_date": "2022-12-12", "prev_trading_date": "2022-12-09", "close": 252.51, "prev_close": 247.40, "pct_change": 2.07, "avg_sector_change": 1.42, "sector_rank": 3 }
+]

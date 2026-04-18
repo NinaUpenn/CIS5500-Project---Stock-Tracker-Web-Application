@@ -1,0 +1,8 @@
+{
+  "rds_host": "REPLACE_ME.rds.amazonaws.com",
+  "rds_port": 5432,
+  "rds_db": "REPLACE_ME",
+  "rds_user": "REPLACE_ME",
+  "rds_password": "REPLACE_ME",
+  "server_port": 8080
+}

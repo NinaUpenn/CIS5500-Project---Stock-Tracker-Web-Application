@@ -1,0 +1,6 @@
+[
+  { "sector_name": "Technology", "industry_name": "Semiconductors", "month": "2022-11-01", "prev_rnk": 6, "rnk": 1, "rank_improvement": 5, "industry_month_ret": 0.087 },
+  { "sector_name": "Consumer Discretionary", "industry_name": "Auto Manufacturers", "month": "2022-11-01", "prev_rnk": 1, "rnk": 5, "rank_improvement": -4, "industry_month_ret": -0.062 },
+  { "sector_name": "Technology", "industry_name": "Software Infrastructure", "month": "2022-10-01", "prev_rnk": 5, "rnk": 2, "rank_improvement": 3, "industry_month_ret": 0.053 },
+  { "sector_name": "Communication Services", "industry_name": "Interactive Media & Services", "month": "2022-11-01", "prev_rnk": 4, "rnk": 2, "rank_improvement": 2, "industry_month_ret": 0.041 }
+]

@@ -1,0 +1,25 @@
+# local postgres for offline dev after a one-time csv load. see readme.
+# db/init runs only on first boot, so use `docker compose down -v` to re-run it.
+
+services:
+  db:
+    image: postgres:16
+    container_name: stock-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: stock
+      POSTGRES_PASSWORD: stock
+      POSTGRES_DB: stock
+    ports:
+      - "5432:5432"
+    volumes:
+      - stock_pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stock -d stock"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  stock_pgdata:

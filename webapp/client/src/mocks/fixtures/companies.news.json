@@ -1,0 +1,14 @@
+{
+  "AAPL": [
+    { "company_name": "Apple Inc.", "ticker": "AAPL", "sector_name": "Technology", "industry_name": "Consumer Electronics", "source": "Reuters", "published_at": "2022-12-12T16:30:00Z", "title": "Apple beats expectations on services revenue", "summary": "Services segment grows double digits; iPhone units flat.", "url": "https://example.com/apple-beats-q4", "lm_level": 1, "lm_score1": 0.42, "lm_score2": 0.18, "lm_sentiment": "positive", "mention_confidence": 0.98, "articles_in_window": 14, "recency_rank": 1 },
+    { "company_name": "Apple Inc.", "ticker": "AAPL", "sector_name": "Technology", "industry_name": "Consumer Electronics", "source": "Bloomberg", "published_at": "2022-12-10T12:05:00Z", "title": "Apple supplier Foxconn restarts Zhengzhou lines", "summary": "Zhengzhou output returns to 70% capacity after November disruptions.", "url": "https://example.com/foxconn-restart", "lm_level": 0, "lm_score1": 0.11, "lm_score2": 0.09, "lm_sentiment": "neutral", "mention_confidence": 0.91, "articles_in_window": 14, "recency_rank": 2 },
+    { "company_name": "Apple Inc.", "ticker": "AAPL", "sector_name": "Technology", "industry_name": "Consumer Electronics", "source": "WSJ", "published_at": "2022-12-07T09:00:00Z", "title": "Apple weighs stricter rules for third-party app stores", "summary": "Cupertino considers developer fee changes ahead of EU Digital Markets Act.", "url": "https://example.com/apple-app-stores", "lm_level": -1, "lm_score1": -0.22, "lm_score2": 0.07, "lm_sentiment": "negative", "mention_confidence": 0.85, "articles_in_window": 14, "recency_rank": 3 }
+  ],
+  "MSFT": [
+    { "company_name": "Microsoft Corporation", "ticker": "MSFT", "sector_name": "Technology", "industry_name": "Software Infrastructure", "source": "Reuters", "published_at": "2022-12-12T11:05:00Z", "title": "Microsoft Azure posts 31% growth; AI investment widens", "summary": "Cloud growth accelerates; new OpenAI tie-in announced.", "url": "https://example.com/msft-azure-growth", "lm_level": 1, "lm_score1": 0.55, "lm_score2": 0.21, "lm_sentiment": "positive", "mention_confidence": 0.97, "articles_in_window": 9, "recency_rank": 1 }
+  ],
+  "NVDA": [],
+  "TSLA": [
+    { "company_name": "Tesla, Inc.", "ticker": "TSLA", "sector_name": "Consumer Discretionary", "industry_name": "Auto Manufacturers", "source": "CNBC", "published_at": "2022-12-12T20:10:00Z", "title": "Tesla cuts Model Y prices in China", "summary": "Move follows weaker order flow; shares decline in late trade.", "url": "https://example.com/tsla-model-y-cuts", "lm_level": -1, "lm_score1": -0.31, "lm_score2": 0.14, "lm_sentiment": "negative", "mention_confidence": 0.96, "articles_in_window": 22, "recency_rank": 1 }
+  ]
+}

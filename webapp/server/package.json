@@ -1,0 +1,32 @@
+{
+  "name": "stock-tracker-server",
+  "version": "1.0.0",
+  "description": "Stock News Trader - Phase 1 API",
+  "main": "server.js",
+  "scripts": {
+    "start": "nodemon server.js",
+    "serve": "node server.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "pg": "^8.12.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.0",
+    "supertest": "^7.0.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "collectCoverageFrom": [
+      "routes.js",
+      "server.js"
+    ]
+  }
+}

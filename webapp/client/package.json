@@ -1,0 +1,50 @@
+{
+  "name": "stock-tracker-client",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stock News Trader - Phase 1 React SPA",
+  "dependencies": {
+    "@emotion/react": "^11.11.4",
+    "@emotion/styled": "^11.11.5",
+    "@mui/material": "^5.15.20",
+    "@mui/x-charts": "^7.28.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.23.1",
+    "react-scripts": "5.0.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.4.5",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/user-event": "^14.5.2"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "test:ci": "cross-env CI=true react-scripts test --watchAll=false",
+    "test:coverage": "cross-env CI=true react-scripts test --watchAll=false --coverage"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "jest": {
+    "collectCoverageFrom": [
+      "src/services/**/*.{js,jsx}",
+      "src/components/**/*.{js,jsx}",
+      "src/pages/**/*.{js,jsx}",
+      "src/helpers/**/*.{js,jsx}",
+      "!src/mocks/**",
+      "!src/**/index.js"
+    ]
+  }
+}
