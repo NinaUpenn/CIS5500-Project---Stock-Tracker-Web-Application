@@ -2,7 +2,7 @@
   "name": "stock-tracker-client",
   "version": "1.0.0",
   "private": true,
-  "description": "Stock News Trader - Phase 1 React SPA",
+  "description": "Stock News Analyzer - Phase 1 React SPA",
   "dependencies": {
     "@emotion/react": "^11.11.4",
     "@emotion/styled": "^11.11.5",

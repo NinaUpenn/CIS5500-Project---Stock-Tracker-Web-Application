@@ -55,11 +55,6 @@ export default function NewsCard({ article }) {
           {article.summary}
         </Typography>
       )}
-      {article.mention_confidence != null && (
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
-          Mention confidence: {(Number(article.mention_confidence) * 100).toFixed(0)}%
-        </Typography>
-      )}
     </Paper>
   );
 }

@@ -103,7 +103,7 @@ export default function HomePage() {
 
   return (
     <Container component="main" sx={{ py: 4 }}>
-      <Typography variant="h1" gutterBottom>Stock News Trader</Typography>
+      <Typography variant="h1" gutterBottom>Stock News Analyzer</Typography>
       <Typography variant="body1" sx={{ mb: 4 }}>
         Explore S&amp;P-500-adjacent tickers. Pick a ticker to see its price
         history, sector context, and recent news — or jump into the
